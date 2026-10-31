@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：管道泄漏智能检测（负压波 + 流量平衡）</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  #pres{display:block;width:100%;height:288px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #dt{display:block;width:100%;height:142px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #flow{display:block;width:100%;height:172px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #pipe{display:block;width:100%;height:auto}
+  .vrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid var(--line)}
+  .vrow:last-child{border-bottom:0}
+  .vrow .vk{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--ink-4);white-space:nowrap}
+  .vrow .vv{font-family:var(--mono);font-size:11.5px;color:var(--ink);text-align:right}
+  .vrow .vv small{font-family:var(--sans);font-size:9.5px;color:var(--ink-4);margin-left:3px}
+  .vrow .vv.ok{color:var(--ok)}.vrow .vv.warn{color:var(--warn)}.vrow .vv.bad{color:var(--bad)}
+  .vform{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);background:var(--card-soft);
+    border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin:6px 0 4px;line-height:1.6}
+  .hit{display:grid;grid-template-columns:auto 1fr;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);
+    font-size:11px;line-height:1.55}
+  .hit:last-child{border-bottom:0}
+  .hit .ic{font-family:var(--mono);font-size:11px;padding-top:1px}
+  .hit .ic.y{color:var(--ok)}.hit .ic.n{color:var(--ink-4)}.hit .ic.b{color:var(--bad)}
+  .hit .tx{color:var(--ink-3)}
+  .hit .tx b{color:var(--ink)}
+  .ev{display:grid;grid-template-columns:auto 1fr;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:11.5px}
+  .ev:last-child{border-bottom:0}
+  .ev .t{font-family:var(--mono);font-size:10px;color:var(--ink-4);padding-top:2px;white-space:nowrap}
+  .ev .d{color:var(--ink-3);font-size:10.5px;line-height:1.55;margin-top:2px}
+  .ev .d b{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<div class="dhead">
+  <div>
+    <div class="dkick">PIPELINE LEAK · 负压波 + 流量平衡</div>
+    <h1>双站压力突变 → 泄漏定位与误报抑制</h1>
+    <p class="lead">120 km 输油管道，首站与末站各一台压力变送器。左上是负压波传播示意：泄漏瞬间的压力突降从漏点向两端传播，
+    两端检测到突变的<b>时间差</b>决定漏点位置 x = (L + v·Δt) / 2。左中是 24 h 历史库（10 s 存储）上的双站压力与突变指标；
+    报警后回捞 1 s 原始数据做精分析。右侧是定位结果、Δt 放大、流量平衡交叉验证与检测日志。</p>
+  </div>
+  <div class="dhead-r">
+    <div class="dstat"><div class="k">定位结果</div><div class="v" id="st-loc">—</div></div>
+    <div class="dstat"><div class="k">定位误差</div><div class="v" id="st-err">—</div></div>
+    <div class="dstat"><div class="k">检测延迟</div><div class="v" id="st-delay">—</div></div>
+    <div class="dstat warn"><div class="k">误报次数</div><div class="v" id="st-fp">—</div></div>
+  </div>
+</div>
+
+<div class="dctl">
+  <div class="grp"><span class="glbl">场景</span><div class="seg" id="seg-scen"></div></div>
+  <div class="ctl-s"><label for="r-pos">泄漏位置</label><input type="range" id="r-pos" min="0" max="100" step="1" value="62"><output id="o-pos">74.4 km</output></div>
+  <div class="ctl-s"><label for="r-leak">漏量</label><input type="range" id="r-leak" min="0.5" max="5" step="0.1" value="2"><output id="o-leak">2.0 %</output></div>
+  <div class="ctl-s"><label>噪声</label><input type="range" id="r-noise" min="0.3" max="3" step="0.1" value="1"><output id="o-noise">1.0×</output></div>
+  <div class="ctl-s"><label>触发阈值</label><input type="range" id="r-thr" min="0.015" max="0.09" step="0.005" value="0.045"><output id="o-thr">0.045 MPa</output></div>
+  <label class="tog on" id="tog-aware"><i></i>工况感知</label>
+  <label class="tog on" id="tog-flow"><i></i>流量平衡交叉验证</label>
+  <span class="sp"></span>
+  <button class="dbtn pri" id="play">▶ 播放 24 h</button>
+  <button class="dbtn" id="btn-reset">重置</button>
+</div>
+
+<div class="dgrid c2">
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>管线纵剖面 · 负压波传播</b><span id="pipe-hint">时间压缩 ≈ 220×</span></div>
+      <svg id="pipe" viewBox="0 0 700 180" role="img" aria-label="管道纵剖面与负压波传播示意"></svg>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>首站侧波前</span>
+        <span><i style="background:#355c74"></i>末站侧波前</span>
+        <span><i style="background:#a64b3c"></i>泄漏点</span>
+        <span>波前到达时刻之差 Δt 决定定位</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>双站压力与突变指标 · 24 h</b><span id="time-hint">t = 24:00 · 全天</span></div>
+      <canvas id="pres" width="1400" height="576"></canvas>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>首站出站压力</span>
+        <span><i style="background:#355c74"></i>末站进站压力</span>
+        <span><i style="background:#a9742c"></i>突变指标 S</span>
+        <span><i class="dash"></i>触发阈值</span>
+        <span><i style="background:#f5e6e1;height:8px"></i>泄漏区段</span>
+        <span><i style="background:#f4e8d4;height:8px"></i>工况操作时刻</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>流量平衡 · 进出站流量差累计</b><span id="flow-hint">—</span></div>
+      <canvas id="flow" width="700" height="344"></canvas>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>累计流量差 ΔV</span>
+        <span><i class="dash"></i>持续偏离判据 12 m³</span>
+        <span>真泄漏持续偏离、工况扰动短时脉冲后回落</span>
+      </div>
+    </div>
+    <p class="dnote" id="note"></p>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>判定与定位</b><span id="vd-hint">—</span></div>
+      <div id="verdict"></div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>Δt 放大 · 1 s 原始数据</b><span id="dt-hint">—</span></div>
+      <canvas id="dt" width="700" height="284"></canvas>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>首站</span>
+        <span><i style="background:#355c74"></i>末站</span>
+        <span>纵轴为压力相对基线的偏移</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>交叉验证判据</b><span>三项同时满足才判泄漏</span></div>
+      <div id="hits"></div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>检测日志</b><span id="alarms-hint">按时间顺序</span></div>
+      <div id="alarms"></div>
+    </div>
+  </div>
+</div>
+
+<script src="demo.js"></script>
+</body>
+</html>

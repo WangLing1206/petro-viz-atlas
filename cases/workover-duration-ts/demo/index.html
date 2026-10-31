@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：修井周期预测（分位数 + 蒙特卡洛）</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .gantt-wrap{border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 4px 2px}
+  .gantt-wrap svg{display:block;width:100%;height:auto}
+  .cdf-wrap{margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
+  .cdf-wrap svg{display:block;width:100%;height:auto}
+  .keep{background:var(--jade-l)}
+  .dctl button.tog{border:0;background:none;padding:0;font:inherit}
+  .dctl .seg{flex-wrap:wrap}
+  .dctl .seg button:focus-visible,
+  .dctl .tog:focus-visible,
+  .dctl .dbtn:focus-visible,
+  .ctl-s input:focus-visible{outline:2px solid var(--jade);outline-offset:2px}
+  @media (max-width:760px){
+    .gantt-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .gantt-wrap svg{min-width:640px}
+    .dctl{gap:10px}
+    .dctl .seg{width:100%}
+  }
+</style>
+</head>
+<body>
+
+<div class="dhead">
+  <div>
+    <div class="dkick">QUANTILE + MONTE CARLO · 工期区间</div>
+    <h1>井况 → 工序区间 → 总工期分布</h1>
+    <p class="lead">每一道工序用分位数回归给出 P10—P90 区间（而不是一个均值），再蒙特卡洛抽 2000 次相加得到总工期分布。
+    调度真正需要回答的是：<b>按 10 天报计划，按期完工的概率有多大？</b></p>
+  </div>
+  <div class="dhead-r">
+    <div class="dstat"><div class="k">P50 工期</div><div class="v" id="st-p50">—</div></div>
+    <div class="dstat"><div class="k">P90 工期</div><div class="v" id="st-p90">—</div></div>
+    <div class="dstat good"><div class="k">按期概率</div><div class="v" id="st-prob">—</div></div>
+    <div class="dstat"><div class="k">区间宽度</div><div class="v" id="st-w">—</div></div>
+  </div>
+</div>
+
+<div class="dctl">
+  <div class="grp"><span class="glbl" id="lbl-fault">故障类型</span><div class="seg" id="seg-fault" role="group" aria-labelledby="lbl-fault"></div></div>
+  <div class="ctl-s"><label for="r-depth">井深</label><input type="range" id="r-depth" min="1200" max="3600" step="50" value="2400" aria-label="井深（米）"><output id="o-depth" for="r-depth">2400 m</output></div>
+  <button type="button" class="tog on" id="tog-mill" role="switch" aria-checked="true" aria-label="是否需要磨铣"><i></i>需磨铣</button>
+  <button type="button" class="tog on" id="tog-kill" role="switch" aria-checked="true" aria-label="是否需要压井"><i></i>需压井</button>
+  <div class="ctl-s"><label for="r-plan">计划工期</label><input type="range" id="r-plan" min="3" max="20" step="0.5" value="10" aria-label="计划工期（天）"><output id="o-plan" for="r-plan">10 天</output></div>
+  <button type="button" class="dbtn" id="btn-reset" style="margin-left:auto" aria-label="恢复默认井况与计划工期">重置</button>
+</div>
+
+<div class="dgrid c2">
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>工序级累计完成时刻（甘特）</b><span>横轴：累计天数（天）· 竖线：总 P50 / P90</span></div>
+      <div class="gantt-wrap"><svg id="gantt" viewBox="0 0 680 272" role="img" aria-label="工序累计完成时刻与总工期分位"></svg></div>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>P50 排期段（深色）</span>
+        <span><i style="background:#c8dbd2"></i>完成时刻 P10—P90（浅色）</span>
+        <span><i style="background:#a9742c"></i>方差贡献最大工序</span>
+        <span><i style="background:#1d4e50;height:0;border-left:2px solid #1d4e50;border-radius:0"></i>总 P50 / 总 P90 竖线</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>总工期分布（2000 次蒙特卡洛）</b><span id="mc-hint">—</span></div>
+      <div class="gantt-wrap"><svg id="hist" viewBox="0 0 680 234" role="img" aria-label="总工期分布"></svg></div>
+      <div class="dfig-foot">
+        <span><i style="background:#c8dbd2"></i>全部落在计划内</span>
+        <span><i style="background:#e6d3ae"></i>跨界 bin（部分超期）</span>
+        <span><i style="background:#a64b3c;opacity:.55"></i>全部超期</span>
+        <span>竖线：P10 / P50 / P90 与计划工期</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>按期完工概率 · CDF</b><span>竖线与曲线交点 = 按期概率</span></div>
+      <div id="prob"></div>
+      <div class="cdf-wrap"><svg id="cdf" viewBox="0 0 320 170" role="img" aria-label="总工期累计概率曲线"></svg></div>
+      <p class="dnote" style="margin-top:9px;font-size:11px" id="note"></p>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>工序明细</b><span>天 · 方差贡献按协方差分解</span></div>
+      <table class="dtable"><thead><tr><th>工序</th><th class="num">P10</th><th class="num">P50</th><th class="num">P90</th><th class="num">宽</th></tr></thead><tbody id="proc"></tbody></table>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>影响因素</b><span>本井相对基准</span></div>
+      <div id="factors"></div>
+    </div>
+  </div>
+</div>
+
+<script src="demo.js"></script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：落物打捞工具智能选型</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .rankrow{display:grid;grid-template-columns:1fr;gap:2px;padding:6px 0;border-bottom:1px solid var(--line)}
+  .rankrow:last-child{border-bottom:0}
+  .rankrow .l1{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:baseline}
+  .rankrow .nm{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .rankrow .sc{font-family:var(--mono);font-size:11.5px;color:var(--jade-d)}
+  .rankrow.out .nm{color:var(--ink-4);font-weight:500}
+  .rankrow.out .sc{color:var(--ink-4)}
+  .rankrow .why{font-size:10.5px;color:var(--ink-4);line-height:1.5}
+  .rankrow .meta{font-size:9.5px;color:var(--ink-4);line-height:1.45;font-family:var(--mono)}
+  .rankrow .warnline{font-size:10px;color:var(--warn);line-height:1.5}
+  .rankrow.out .why{color:var(--bad)}
+  .ordlist{counter-reset:o;font-size:11.5px;color:var(--ink-2);line-height:1.7}
+  .ordlist div{padding:5px 0 5px 22px;position:relative;border-bottom:1px solid var(--line)}
+  .ordlist div:last-child{border-bottom:0}
+  .ordlist div::before{counter-increment:o;content:counter(o);position:absolute;left:0;top:6px;width:15px;height:15px;border-radius:4px;background:var(--jade-l);color:var(--jade-d);font-family:var(--mono);font-size:9px;display:grid;place-items:center}
+  .dctl.sub{padding-top:8px}
+  .seg.sm button{padding:2px 8px;font-size:10.5px}
+  .hint{font-family:var(--mono);font-size:9px;color:var(--ink-4);white-space:nowrap}
+  .dctl input[type=range]{width:112px}
+  .prep-seq{font-size:11.5px;color:var(--ink-2);line-height:1.65;background:var(--card-soft);border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin-bottom:4px}
+  .prep-seq b{color:var(--ink)}
+  .prep-row{display:grid;grid-template-columns:78px minmax(0,1fr) auto;gap:10px;align-items:start;padding:7px 0;border-bottom:1px solid var(--line)}
+  .prep-row:last-child{border-bottom:0}
+  .prep-row .pn{font-size:11.5px;font-weight:600;color:var(--ink)}
+  .prep-row .pd{font-size:10.5px;color:var(--ink-3);line-height:1.55}
+  .prep-row .pd em{font-style:normal;color:var(--ink-4);font-family:var(--mono);font-size:9px}
+  .tblwrap{overflow-x:auto}
+  .ttbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;line-height:1.5}
+  .ttbl th{font-family:var(--mono);font-size:8px;letter-spacing:.05em;color:var(--ink-4);font-weight:400;text-align:left;padding:5px 6px 5px 0;border-bottom:1px solid var(--line-2);white-space:nowrap}
+  .ttbl td{padding:5px 6px 5px 0;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+  .ttbl tr:last-child td{border-bottom:0}
+  .ttbl tr.best td{background:rgba(36,92,90,.05)}
+  .ttbl .tn{font-weight:600;color:var(--ink)}
+  .ttbl .num{font-family:var(--mono);font-size:9.5px;white-space:nowrap}
+  .ttbl .note{font-size:9px;color:var(--ink-3);line-height:1.45}
+  .ttbl .cid{font-family:var(--mono);font-size:9px}
+  .tblcap{font-size:10.5px;color:var(--ink-4);line-height:1.65;margin-top:7px;border-top:1px solid var(--line);padding-top:6px}
+  .tblcap b{color:var(--ink-3)}
+  @media (min-width:901px){.dgrid.c2b{grid-template-columns:minmax(0,380px) minmax(0,1fr)}}
+  #sch-hint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+</style>
+</head>
+<body>
+
+<div class="dhead">
+  <div>
+    <div class="dkick">TOOL SELECTION · 规则匹配</div>
+    <h1>落物特征 → 打捞工具适用性排序</h1>
+    <p class="lead">先设定落物形态与井况，<b>硬约束</b>把物理上不可能的选项剔掉（工具外径 + 单边间隙、通径、可捞外径/内径区间、材质、井斜、循环、落底、最小咬合长度），
+    再用<b>软评分</b>给剩下的工具排序。左边井筒剖面上会画出首选工具的下入状态；套铣筒与平底磨鞋只作为<b>解卡/磨铣工序工具</b>，不参与打捞排序。</p>
+  </div>
+  <div class="dhead-r">
+    <div class="dstat"><div class="k">首选工具</div><div class="v" id="st-tool" style="font-size:12px">—</div></div>
+    <div class="dstat"><div class="k">匹配度</div><div class="v" id="st-score">—</div></div>
+    <div class="dstat"><div class="k">预计起下钻</div><div class="v" id="st-trip">—</div></div>
+    <div class="dstat"><div class="k">硬约束拦截</div><div class="v" id="st-excl">—</div></div>
+  </div>
+</div>
+
+<div class="dctl">
+  <div class="grp"><span class="glbl">落物形态</span><div class="seg" id="seg-form"></div></div>
+  <div class="grp"><span class="glbl">套管规格</span><div class="seg" id="seg-casing"></div><span class="hint" id="casing-hint">—</span></div>
+  <div class="ctl-s"><label>落物外径</label><input type="range" id="r-od" min="1" max="120" step="1" value="73"><output id="o-od">73 mm</output></div>
+  <div class="ctl-s"><label>落物内径</label><input type="range" id="r-fid" min="0" max="67" step="1" value="62"><output id="o-fid">62 mm</output></div>
+  <div class="ctl-s"><label>长度</label><input type="range" id="r-len" min="0.1" max="12" step="0.1" value="2.4"><output id="o-len">2.4 m</output></div>
+  <div class="ctl-s"><label>井斜</label><input type="range" id="r-incl" min="0" max="70" step="1" value="18"><output id="o-incl">18°</output></div>
+</div>
+
+<div class="dctl sub">
+  <div class="grp"><span class="glbl">落底状态</span><div class="seg sm" id="seg-bottom">
+    <button data-b="1">已落底</button><button data-b="0">悬空</button><button data-b="u" class="on">未知</button>
+  </div></div>
+  <div class="grp"><span class="glbl">落物材质</span><div class="seg sm" id="seg-mat">
+    <button data-m="ferro" class="on">铁磁性</button><button data-m="non">非铁磁性</button>
+  </div></div>
+  <label class="tog on" id="tog-circ"><i></i>可循环洗井</label>
+  <div class="grp"><span class="glbl">卡阻状态</span><div class="seg sm" id="seg-stuck">
+    <button data-s="none" class="on">未卡阻</button><button data-s="sand">砂卡</button><button data-s="cement">水泥卡</button><button data-s="buried">被埋</button>
+  </div></div>
+  <span class="sp"></span>
+  <button class="dbtn reset" id="btn-reset" type="button">↺ 重置</button>
+</div>
+
+<div class="dgrid c2b">
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>井筒剖面 · 下入状态</b><span id="sch-hint">落物 73 mm · 2.4 m</span></div>
+      <svg id="schematic" viewBox="0 0 380 440" role="img" aria-label="井筒与落物打捞示意"></svg>
+      <div class="dfig-foot">
+        <span><i style="background:#d3c9b6"></i>套管</span>
+        <span><i style="background:#a64b3c"></i>落物</span>
+        <span><i style="background:#1d4e50"></i>推荐工具</span>
+        <span>井斜按 0.45 比例绘制 · 示意，非等比例</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>首选工具构造示意</b><span id="art-hint">—</span></div>
+      <svg id="toolart" viewBox="0 0 210 172" role="img" aria-label="工具构造"></svg>
+      <p style="font-size:11px;color:var(--ink-3);line-height:1.65;margin-top:6px" id="art-note">—</p>
+    </div>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>打捞工具适用性排序</b><span>灰字 = 被硬约束排除 · 悬停看规格与备注</span></div>
+      <div id="rank"></div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>首选工具的分项得分</b><span>加权求和 = 匹配度</span></div>
+      <div id="parts"></div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>建议作业顺序</b><span>按工具类型给动作，不套统一压重</span></div>
+      <div class="ordlist" id="orders"></div>
+    </div>
+  </div>
+</div>
+
+<div class="dfig" style="margin-top:12px">
+  <div class="dfig-h"><b>解卡 / 套铣准备（工序工具，不参与打捞评分）</b><span>只按卡阻状态推荐</span></div>
+  <div id="prep"></div>
+</div>
+
+<div class="dfig" style="margin-top:12px">
+  <div class="dfig-h"><b>工具尺寸表 · 知识表原文</b><span>外径 / 内孔 / 可捞区间 / 工况</span></div>
+  <div id="tooltable"></div>
+</div>
+
+<p class="dnote" id="note"></p>
+
+<script src="demo.js"></script>
+</body>
+</html>

@@ -1,0 +1,398 @@
+/* =========================================================
+   设计令牌 Design Tokens · v2
+   ---------------------------------------------------------
+   风格：岩纸色内容区 + 深石油青 hero + 黄铜强调
+   规则：所有颜色只在这里定义，案例与组件不得写死色值。
+   兼容性：v1 的令牌名全部保留（案例、示范页、第三方包都在用），
+          新增令牌只做增量，不重命名、不删除。
+   ========================================================= */
+
+:root{
+  /* ---------- 画布 ---------- */
+  --paper:      #f6f2e8;   /* 主背景，岩纸色 */
+  --paper-2:    #efe9dd;   /* 次级底板 */
+  --paper-3:    #e5dcc9;   /* 三级底板 */
+  --card:       #fffefa;   /* 卡片 */
+  --card-soft:  #faf7f0;   /* 卡片内嵌区 */
+
+  /* ---------- 描边 ---------- */
+  --line:       #e3dccd;
+  --line-2:     #d3c9b6;
+  --line-3:     #beb19a;
+
+  /* ---------- 墨色（文字） ---------- */
+  --ink:        #1a2428;
+  --ink-2:      #4a585c;
+  --ink-3:      #6f7a7c;
+  --ink-4:      #99a3a4;
+  --ink-inv:    #fcfaf4;
+
+  /* ---------- 主强调：深石油青 + 黄铜 ---------- */
+  --jade:       #1d4e50;
+  --jade-d:     #123a3d;
+  --jade-l:     #e7eee9;
+  --clay:       #a9742c;
+  --clay-d:     #83551f;
+  --clay-l:     #f4e8d4;
+
+  /* ---------- 五类方法色（统一到石油 / 钢 / 黄铜色系） ---------- */
+  --c-cv:       #245c5a;   /* 计算机视觉 */
+  --c-ts:       #a9742c;   /* 时序预测 */
+  --c-nlp:      #5a6b78;   /* 自然语言处理 */
+  --c-opt:      #355c74;   /* 优化算法 */
+  --c-kg:       #6e6a3c;   /* 知识图谱 */
+
+  --bg-cv:      #e4ece8;
+  --bg-ts:      #f4e8d5;
+  --bg-nlp:     #eaedef;
+  --bg-opt:     #e5ebf0;
+  --bg-kg:      #eeebdd;
+
+  /* ---------- 语义色 ---------- */
+  --ok:         #3d7455;
+  --ok-bg:      #e8f0e7;
+  --warn:       #9a6b1d;
+  --warn-bg:    #f7eed9;
+  --bad:        #a64b3c;
+  --bad-bg:     #f7e8e2;
+
+  /* ---------- 首页深色带（唯一的大面积深色，仅用于 hero） ---------- */
+  --hero-1:     #081619;
+  --hero-2:     #0c2528;
+  --hero-3:     #113438;
+  --hero-ink:   #f0eadb;
+  --hero-ink-2: rgba(240,234,219,.72);
+  --hero-ink-3: rgba(240,234,219,.46);
+  --hero-line:  rgba(205,184,150,.16);
+  --hero-glow:  rgba(178,132,74,.32);
+  --hero-amber: rgba(205,158,95,.55);
+
+  /* ---------- 圆角 ---------- */
+  --r-s: 6px;
+  --r-m: 10px;
+  --r-l: 16px;
+  --r-xl: 24px;
+
+  /* ---------- 阴影 ---------- */
+  --sh-1: 0 1px 2px rgba(22,35,42,.05);
+  --sh-2: 0 1px 2px rgba(22,35,42,.05), 0 8px 22px -14px rgba(22,35,42,.22);
+  --sh-3: 0 2px 6px rgba(22,35,42,.06), 0 20px 44px -22px rgba(22,35,42,.28);
+  --sh-glow: 0 10px 30px -12px rgba(29,78,80,.45);
+
+  /* ---------- 字体 ---------- */
+  --mono: 'JetBrains Mono','SFMono-Regular','Cascadia Mono',Consolas,'Liberation Mono',monospace;
+  --sans: 'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI Variable','Segoe UI',
+          'PingFang SC','Hiragino Sans GB','Microsoft YaHei UI','Microsoft YaHei',sans-serif;
+
+  /* ---------- 布局 ---------- */
+  --nav-h: 56px;
+  --maxw: 1200px;
+  --sp-1: 6px;  --sp-2: 10px;  --sp-3: 14px;
+  --sp-4: 20px; --sp-5: 28px;  --sp-6: 40px;
+
+  /* ---------- 动效 ---------- */
+  --ease: cubic-bezier(.22,.68,.28,1);
+  --dur: .22s;
+}
+
+/* =========================================================
+   Reset
+   ========================================================= */
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.68;
+  color:var(--ink);
+  background:var(--paper);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden;
+}
+
+/* 背景：低饱和色晕，制造“纸面有光”的感觉 */
+body::before{
+  content:'';
+  position:fixed;inset:0;z-index:-2;
+  background:
+    radial-gradient(1000px 620px at 6% -12%,  #e8efec 0%, rgba(232,239,236,0) 62%),
+    radial-gradient(880px 560px at 96% -6%,   #f4e8d6 0%, rgba(244,232,214,0) 60%),
+    radial-gradient(900px 760px at 74% 102%,  #e6edf0 0%, rgba(230,237,240,0) 62%),
+    radial-gradient(760px 620px at 18% 96%,   #f0e9e4 0%, rgba(240,233,228,0) 60%),
+    var(--paper);
+}
+/* 极淡网格，只在上半页可见 */
+body::after{
+  content:'';
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:
+    linear-gradient(to right, rgba(60,70,66,.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(60,70,66,.05) 1px, transparent 1px);
+  background-size:76px 76px;
+  mask-image:radial-gradient(ellipse 70% 46% at 50% 0%, #000 0%, transparent 82%);
+  -webkit-mask-image:radial-gradient(ellipse 70% 46% at 50% 0%, #000 0%, transparent 82%);
+}
+
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;font-size:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:inherit}
+img,svg{max-width:100%}
+::selection{background:rgba(15,109,89,.18);color:var(--ink)}
+
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:var(--paper-2)}
+::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px;border:3px solid var(--paper-2)}
+::-webkit-scrollbar-thumb:hover{background:var(--line-3)}
+
+:focus-visible{outline:2px solid var(--jade);outline-offset:2px;border-radius:4px}
+
+/* =========================================================
+   排版基元
+   ========================================================= */
+h1,h2,h3,h4,h5{font-weight:650;letter-spacing:-.008em;line-height:1.28;color:var(--ink)}
+p{color:var(--ink-2)}
+b,strong{font-weight:650;color:var(--ink)}
+
+.wrap{width:min(var(--maxw),calc(100% - 48px));margin:0 auto}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.kicker{
+  font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--jade-d);display:inline-flex;align-items:center;gap:9px;
+}
+.kicker::before{content:'';width:20px;height:1.5px;background:currentColor;opacity:.5;border-radius:2px}
+.kicker.plain::before{display:none}
+.kicker.clay{color:var(--clay-d)}
+
+.eyebrow{
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-4);
+}
+
+.lede{font-size:13.5px;line-height:1.8;color:var(--ink-2)}
+
+/* 工具类 */
+.muted{color:var(--ink-3)}
+.small{font-size:12px}
+.nowrap{white-space:nowrap}
+.hr{height:1px;background:var(--line);border:0;margin:0}
+.stack{display:flex;flex-direction:column}
+.row{display:flex;align-items:center}
+
+/* 动效：轻微上浮，不做夸张动画 */
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.rise{animation:rise .42s var(--ease) both}
+.d1{animation-delay:.03s}.d2{animation-delay:.06s}.d3{animation-delay:.09s}.d4{animation-delay:.12s}.d5{animation-delay:.15s}
+
+/* 滚动进入：默认不可见，由 FX.reveal 加 .rv-in */
+[data-rv]{opacity:0;transform:translateY(16px);transition:opacity .62s var(--ease),transform .62s var(--ease)}
+[data-rv].rv-in{opacity:1;transform:none}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  [data-rv]{opacity:1!important;transform:none!important}
+}
+
+/* =========================================================
+   v1.4 · 石油工业统一配色（增量覆盖，不删旧令牌）
+   ---------------------------------------------------------
+   修改意见①：更像石油工业 + 科普，色调不繁杂。
+   做法：只保留三主色 —— 墨油黑 / 石油青 / 油金；
+   五类方法色收敛到同一石油色系的深浅变化，不再五彩；
+   13 环节色收敛为「上游深青 → 下游暖金」的渐变序列，
+   且只用于 3px 色条、小圆点等小面积标识。
+   变量名全部沿用，案例包与第三方包不受影响。
+   ========================================================= */
+:root{
+  /* 主强调：收敛到油金单重音，去掉多余暖灰 */
+  --jade:       #0e3a3e;
+  --jade-d:     #0a2b2e;
+  --jade-l:     #e6edeb;
+  --clay:       #b07a2a;
+  --clay-d:     #84591c;
+  --clay-l:     #f5ead3;
+
+  /* 五类方法色：同一石油色系，明度区分，不抢戏 */
+  --c-cv:       #0e3a3e;
+  --c-ts:       #b07a2a;
+  --c-nlp:      #51606b;
+  --c-opt:      #2e5a72;
+  --c-kg:       #7a6f3a;
+
+  --bg-cv:      #e6edeb;
+  --bg-ts:      #f5ead3;
+  --bg-nlp:     #e9edee;
+  --bg-opt:     #e4eaf0;
+  --bg-kg:      #eeead9;
+
+  /* 首页深色带：墨油黑，加深统一 */
+  --hero-1:     #060f12;
+  --hero-2:     #0a1e22;
+  --hero-3:     #0e3036;
+  --hero-glow:  rgba(192,150,84,.26);
+  --hero-amber: rgba(201,163,94,.5);
+  color-scheme: light;
+}
+
+/* =========================================================
+   v1.5 精修基座：排版与交互质感
+   ========================================================= */
+/* 标题防孤行；数据一律等宽对齐 */
+h1,h2,h3,.dh-title,.lib-hero h1,.stage h1{text-wrap:balance}
+.mono,.hud-kpis b,.dc-big,.metric .v,.spec-row .v,.ph-stat .n,.lt-count b,.lc-kpis b{
+  font-variant-numeric:tabular-nums;
+}
+/* 可点击元素去双击缩放延迟；滚动容器不误触页面 */
+.btn,.chip,.hstate,.hud-btn,.lf-chip,.tab,.mcard,.step{touch-action:manipulation}
+.chain-scroll,.hs-list,.mdl-b,.imp-res,.imp-list{overscroll-behavior:contain}
+/* 跳过导航：平时隐藏，键盘聚焦时出现 */
+.skip-link{
+  position:fixed;left:12px;top:-60px;z-index:400;
+  padding:9px 16px;border-radius:100px;font-size:13px;font-weight:600;
+  color:#fff;background:var(--jade);border:1px solid var(--jade);
+  box-shadow:var(--sh-3);transition:top .18s var(--ease);
+}
+.skip-link:focus-visible{top:10px;outline:2px solid var(--clay);outline-offset:2px}
+/* 锚点与吸顶条错开 */
+.tabs,.filters,.mg-head{scroll-margin-top:calc(var(--nav-h) + 10px)}
+/* 键盘焦点更醒目 */
+:focus-visible{outline:2.5px solid var(--jade);outline-offset:2px}
+
+/* =========================================================
+   v3 · 视觉系统重定
+   ---------------------------------------------------------
+   概念：现场记录本 / 测井图版。
+   · 纸面是暖骨白，不是米黄；墨色偏黑绿，像原油在纸上。
+   · 强调色只有一个：黄铜。交互态才用它，其余全部靠线条。
+   · 数字与单位用等宽，标签用中文句式，不用全大写装饰。
+   ========================================================= */
+:root{
+  /* 画布 */
+  --paper:      #f3eee3;
+  --paper-2:    #ece6d8;
+  --paper-3:    #ded5c2;
+  --card:       #fbf8f0;
+  --card-soft:  #f6f1e5;
+
+  /* 描边 */
+  --line:       #ddd4c1;
+  --line-2:     #cbbfa7;
+  --line-3:     #a99a7e;
+  --line-grid:  rgba(32,44,41,.09);
+
+  /* 墨色 */
+  --ink:        #15211f;
+  --ink-2:      #45524d;
+  --ink-3:      #6c7872;
+  --ink-4:      #98a199;
+  --ink-inv:    #f7f2e6;
+
+  /* 主色：石油青 / 黄铜 */
+  --jade:       #123b3a;
+  --jade-d:     #0a2726;
+  --jade-l:     #e4ece7;
+  --clay:       #b4762a;
+  --clay-d:     #8a5718;
+  --clay-l:     #f6ead2;
+
+  /* 方法色：同一色系的五档，只做小面积标识 */
+  --c-cv:       #123b3a;
+  --c-ts:       #a86a1f;
+  --c-nlp:      #4f6066;
+  --c-opt:      #2b5570;
+  --c-kg:       #6f6636;
+
+  --bg-cv:      #e3ebe6;
+  --bg-ts:      #f6ead2;
+  --bg-nlp:     #e8eceb;
+  --bg-opt:     #e3eaf0;
+  --bg-kg:      #ece8d8;
+
+  /* 语义色 */
+  --ok:         #2f6b4f;
+  --ok-bg:      #e3ece4;
+  --warn:       #93631a;
+  --warn-bg:    #f6ecd7;
+  --bad:        #9c4235;
+  --bad-bg:     #f5e6df;
+
+  /* 深色带 */
+  --hero-1:     #060e0d;
+  --hero-2:     #0a1a19;
+  --hero-3:     #12302c;
+  --hero-ink:   #f3ecdd;
+  --hero-ink-2: rgba(243,236,221,.74);
+  --hero-ink-3: rgba(243,236,221,.46);
+  --hero-line:  rgba(206,184,146,.18);
+  --hero-glow:  rgba(190,140,62,.26);
+  --hero-amber: #d9a24a;
+
+  /* 圆角：偏工程图纸，不用大圆角 */
+  --r-s: 3px;
+  --r-m: 5px;
+  --r-l: 8px;
+  --r-xl: 12px;
+
+  /* 阴影：几乎没有，靠线与纸 */
+  --sh-1: 0 1px 0 rgba(23,34,31,.04);
+  --sh-2: 0 1px 2px rgba(23,34,31,.05);
+  --sh-3: 0 14px 34px -22px rgba(23,34,31,.3);
+  --sh-glow: 0 8px 26px -16px rgba(18,59,58,.5);
+
+  /* 字阶 */
+  --fs-00: 10px;
+  --fs-0:  11px;
+  --fs-1:  12px;
+  --fs-2:  13px;
+  --fs-3:  14px;
+  --fs-4:  16px;
+  --fs-5:  19px;
+  --fs-6:  24px;
+  --fs-7:  32px;
+  --fs-8:  42px;
+  --fs-9:  clamp(32px, 3.2vw, 48px);
+
+  --nav-h: 62px;
+  --maxw: 1280px;
+  --ease: cubic-bezier(.2,.7,.25,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --dur: .24s;
+  --dur-2: .48s;
+}
+
+body{
+  font-size: var(--fs-3);
+  line-height: 1.78;
+  background: var(--paper);
+}
+body::before{
+  background:
+    radial-gradient(1100px 680px at 4% -10%, #e9f0ea 0%, rgba(233,240,234,0) 60%),
+    radial-gradient(900px 560px at 98% -8%, #f1e7d3 0%, rgba(241,231,211,0) 58%),
+    radial-gradient(1000px 700px at 80% 104%, #e7edee 0%, rgba(231,237,238,0) 62%),
+    var(--paper);
+}
+body::after{
+  background-image:
+    linear-gradient(to right, rgba(28,40,36,.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(28,40,36,.045) 1px, transparent 1px);
+  background-size: 96px 96px;
+}
+
+h1,h2,h3,h4,h5{letter-spacing:-.012em;line-height:1.24;font-weight:640}
+p{line-height:1.8}
+.lede{font-size:var(--fs-3);line-height:1.85}
+.wrap{width:min(var(--maxw),calc(100% - 56px))}
+.mono{font-variant-numeric:tabular-nums}
+
+/* 中文小标签：不用全大写 + 字距 */
+.kicker{
+  font-family:var(--sans);font-size:var(--fs-0);letter-spacing:.02em;
+  text-transform:none;font-weight:600;color:var(--jade-d);
+  display:inline-flex;align-items:center;gap:8px;
+}
+.kicker::before{width:14px;height:1px;background:currentColor;opacity:.45}
+.eyebrow{
+  font-family:var(--sans);font-size:var(--fs-0);letter-spacing:.02em;
+  text-transform:none;color:var(--ink-4);font-weight:500;
+}

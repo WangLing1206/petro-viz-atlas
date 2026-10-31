@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：抽油机井工况诊断（示功图分类）</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .dyn{border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px}
+  .dyn svg{display:block;width:100%;height:auto}
+  .conf{display:grid;grid-template-columns:56px repeat(6,1fr);gap:2px 4px;font-family:var(--mono);font-size:9px;align-items:center}
+  .conf .lb{text-align:right;color:var(--ink-4);font-size:8.5px;white-space:nowrap;overflow:hidden}
+  .conf i{display:block;height:14px;border-radius:2px}
+  .pcoord-wrap{overflow-x:auto}
+  .pcoord-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10px;color:var(--ink-3);margin-top:6px}
+  .pcoord-legend span{display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 4px;border-radius:3px}
+  .pcoord-legend span:hover,.pcoord-legend span.on{background:var(--paper-2);color:var(--ink)}
+  #pcoord{display:block;width:100%;min-width:720px;height:auto}
+</style>
+</head>
+<body>
+
+<div class="dhead">
+  <div>
+    <div class="dkick">DYNAMOMETER CARD · 形态分类</div>
+    <h1>示功图 → 工况诊断</h1>
+    <p class="lead">拖动「工况」看六种典型示功图形状。井况固定为泵径 56 mm、泵深 1200 m、冲程 3.0 m、冲次 6 min⁻¹；加噪声或结蜡干扰，看复合工况下置信度怎么掉。算法先归一化、再抽形态特征，与六个模板比对给出概率分布。</p>
+  </div>
+  <div class="dhead-r">
+    <div class="dstat"><div class="k">判定</div><div class="v" id="st-verdict" style="font-size:12px">—</div></div>
+    <div class="dstat"><div class="k">置信度</div><div class="v" id="st-conf">—</div></div>
+    <div class="dstat"><div class="k">单冲程功</div><div class="v" id="st-area">—</div></div>
+  </div>
+</div>
+
+<div class="dctl">
+  <div class="grp"><span class="glbl">真实工况</span><div class="seg" id="seg-fault"></div></div>
+  <div class="ctl-s"><label>采集噪声</label><input type="range" id="r-noise" min="0" max="1" step="0.05" value="0.15"><output id="o-noise">0.15</output></div>
+  <label class="tog" id="tog-wax"><i></i>叠加结蜡干扰</label>
+  <button class="dbtn reset" id="btn-reset" type="button" style="margin-left:auto">重置参数</button>
+</div>
+
+<div class="dgrid c2">
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>示功图（光杆载荷 — 位移）</b><span id="dyn-hint">—</span></div>
+      <div class="dyn"><svg id="dyn" viewBox="0 0 420 340" role="img" aria-label="示功图"></svg></div>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50;height:4px"></i>实测示功图</span>
+        <span><i class="dash"></i>该工况模板</span>
+        <span><i style="background:#a9742c;height:4px"></i>上下冲程平均载荷</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>形态特征</b><span>归一化后计算</span></div>
+      <div id="feats"></div>
+    </div>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>各工况概率</b><span>模板相似度 + softmax</span></div>
+      <div id="probs"></div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>判定与建议</b><span>按置信度分级</span></div>
+      <div id="advice"></div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>历史评测：混淆矩阵</b><span>1.1 万幅强标签</span></div>
+      <div class="conf" id="cm"></div>
+    </div>
+  </div>
+</div>
+
+<div class="dfig" style="margin-top:12px">
+  <div class="dfig-h"><b>七维特征平行坐标 · 6 类模板 vs 当前样本</b><span>悬停概率行点亮模板 · 一条折线 = 一个工况</span></div>
+  <div class="pcoord-wrap"><svg id="pcoord" viewBox="0 0 900 260" role="img" aria-label="七维特征平行坐标"></svg></div>
+  <div id="pcoord-legend" class="pcoord-legend"></div>
+  <div class="dfig-foot">
+    <span><i style="background:#123b3a;height:4px"></i>当前样本</span>
+    <span>细线 = 6 类模板</span>
+    <span>每个轴按模板与当前样本的极值归一化</span>
+  </div>
+</div>
+
+<p class="dnote" id="note"></p>
+
+<script src="demo.js"></script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：套管损伤智能识别（多臂井径 + 成像）</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  #log{display:block;width:100%;height:470px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:crosshair}
+  .sect{border:1px solid var(--line);border-radius:8px;background:var(--card-soft);padding:4px}
+  .sect svg{display:block;width:100%;height:auto}
+  .hit{display:grid;grid-template-columns:1fr auto;gap:6px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px;cursor:pointer}
+  .hit:last-child{border-bottom:0}
+  .hit:hover{background:var(--jade-l)}
+  .hit .d{font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
+  .hit .m{color:var(--ink-4);font-size:10px;margin-top:2px;line-height:1.5}
+  .hit .r{text-align:right}
+  .sig-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .sig{display:flex;flex-direction:column;gap:4px;align-items:center;padding:8px 6px 7px;border:1px solid var(--line);border-radius:4px;background:var(--card);cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
+  .sig:hover{border-color:var(--clay);background:var(--card-soft)}
+  .sig.on{border-color:var(--clay);background:var(--clay-l)}
+  .sig svg{display:block;width:100%;max-width:132px;height:auto}
+  .sig .st{font-size:11px;font-weight:650;color:var(--ink)}
+  .sig .sd{font-size:8.5px;color:var(--ink-4);font-family:var(--mono)}
+  @media(max-width:760px){.sig-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<div class="dhead">
+  <div>
+    <div class="dkick">CASING INSPECTION · 曲线异常检测</div>
+    <h1>16 臂井径 + 成像 → 损伤清单</h1>
+    <p class="lead">左图是合成的多臂井径剖面（16 条曲线叠在一起）与超声展开成像图。算法逐点计算内偏、外扩、椭圆度与中心偏移，
+    用阈值把候选损伤段检出来，再按形态分类，并按壁厚损失率 / 椭圆度 / 中心偏移分级。鼠标在图上移动可以查看该深度的井筒截面。</p>
+  </div>
+  <div class="dhead-r">
+    <div class="dstat"><div class="k">检出段数</div><div class="v" id="st-n">—</div></div>
+    <div class="dstat good"><div class="k">召回率</div><div class="v" id="st-recall">—</div></div>
+    <div class="dstat warn"><div class="k">误报段数</div><div class="v" id="st-fp">—</div></div>
+    <div class="dstat"><div class="k">复核工时</div><div class="v" id="st-time" style="font-size:12px">—</div></div>
+  </div>
+</div>
+
+<div class="dctl">
+  <div class="grp"><span class="glbl">损伤类型</span><div class="seg" id="seg-type"></div></div>
+  <div class="ctl-s"><label>严重程度</label><input type="range" id="r-sev" min="0" max="1" step="0.05" value="0.55"><output id="o-sev">0.55</output></div>
+  <div class="ctl-s"><label>检测阈值 Δ</label><input type="range" id="r-thr" min="0.8" max="8" step="0.1" value="2.0"><output id="o-thr">2.0 mm</output></div>
+  <label class="tog on" id="tog-noise"><i></i>仪器噪声与偏心</label>
+  <span class="sp"></span>
+  <button class="dbtn pri" id="play">▶ 逐段判读</button>
+  <button class="dbtn" id="btn-reset">重置</button>
+</div>
+
+<div class="dgrid c2">
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>多臂井径剖面 · 展开成像</b><span id="cursor-hint">深度 — m</span></div>
+      <canvas id="log" width="1400" height="940"></canvas>
+      <div class="dfig-foot">
+        <span><i style="background:#99a3a4"></i>16 臂井径</span>
+        <span><i style="background:#1d4e50;height:4px"></i>平均内径</span>
+        <span><i style="background:#123b3a;height:2px"></i>Dmin</span>
+        <span><i style="background:#a86a1f;height:2px"></i>Dmax</span>
+        <span><i class="dash"></i>名义内径</span>
+        <span><i style="background:#a64b3c"></i>检出损伤段</span>
+        <span>成像色：青 = 内缩 · 橙 = 外扩（金属损失）</span>
+      </div>
+    </div>
+    <div class="dfig" style="margin-top:12px">
+  <div class="dfig-h"><b>四类损伤指纹 · 小多图</b><span>点击卡片切换类型并定位到该段</span></div>
+  <div class="sig-grid" id="sig"></div>
+  <div class="dfig-foot">
+    <span>同一套截面编码：虚线 = 名义内径 · 实线 = 实测 16 臂 · 细线 = 中心偏移</span>
+  </div>
+</div>
+
+<p class="dnote" id="note"></p>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>井筒截面</b><span id="sect-hint">— m</span></div>
+      <div class="sect"><svg id="sect" viewBox="0 0 200 200" role="img" aria-label="井筒截面"></svg></div>
+      <div class="dfig-foot">
+        <span><i class="dash"></i>名义内径</span>
+        <span><i style="background:#99a3a4"></i>实测 16 臂</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>检出清单</b><span>按峰值偏差排序</span></div>
+      <div id="hits"></div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>特征与判据</b><span>当前阈值下的统计</span></div>
+      <div id="feats"></div>
+    </div>
+  </div>
+</div>
+
+<script src="demo.js"></script>
+</body>
+</html>

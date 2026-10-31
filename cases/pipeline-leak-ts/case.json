@@ -1,0 +1,155 @@
+{
+  "id": "pipeline-leak-ts",
+  "sceneId": "t1",
+  "methods": [
+    "ts"
+  ],
+  "title": "管道泄漏智能检测：负压波定位 + 流量平衡",
+  "version": "1.0.0",
+  "updated": "2026-10-23",
+  "status": "ready",
+  "tabs": {
+    "background": {
+      "label": "专业背景",
+      "lede": "长输管道沿线几公里才有阀室，两站之间没有任何测点。一次渗漏既可能演变成环境事故，也可能只是调阀引起的压力波动。检测手段是双站压力突变（负压波）、进出站流量平衡与声波法；智能化的价值不在换传感器，而在把小漏量的弱信号与工况扰动的假信号分开，并把定位误差算清楚。",
+      "judge": [
+        {
+          "label": "任务类型",
+          "value": "时序突变检测 + 定位",
+          "desc": "滑窗差分检测突变，时间差决定漏点位置"
+        },
+        {
+          "label": "数据门槛",
+          "value": "两站压力 + 流量 + 工况记录",
+          "desc": "压力 1 s 原始数据、10 s 历史库、调阀台账"
+        },
+        {
+          "label": "可见收益",
+          "value": "小时级 → 1.5 分钟",
+          "desc": "从巡线发现到自动报警并给出位置"
+        },
+        {
+          "label": "难度",
+          "value": "中",
+          "desc": "机理清楚，难在误报率与小漏量检出",
+          "html": "<span class='dtag' data-d='中'>难度 中</span>"
+        }
+      ],
+      "sections": [
+        {
+          "no": 1,
+          "en": "PROBLEM",
+          "title": "当前做法与问题",
+          "html": "<p>长输管道沿线上百米一个压力变送器、几公里一个阀室，<b>两站之间没有任何测点</b>——泄漏发生后，运维能依靠的只有两端站场的压力与流量趋势，以及巡线人员。一条 120 km 的管段，夜间或偏远段落从泄漏发生到人工发现常在小时级；等地面冒油、井口见油，环境损失与停输损失都已经发生。</p><p>负压波法的原理并不复杂：泄漏瞬间的局部压力突降（负压波）以波速 <b>v ≈ 1100 m/s</b> 从漏点向两端传播，首站与末站分别在 t1、t2 检测到突变，则 <b>x = (L + v·Δt) / 2</b>（Δt = t1 − t2）。但现场做不好有三个原因：<b>① 小漏量检不到</b>——0.5% 输量的渗漏，压力波幅只有几十 kPa，与泵脉动、调阀噪声同量级；<b>② 工况扰动误报</b>——调阀与启停泵引起的压力波动幅度和泄漏同级甚至更大，泵切换产生的负压波会在两端形成与泄漏几乎一致的时间差；<b>③ 数据分辨率不够</b>——历史库按 10 s 存储，波前的起始时刻被抹平，Δt 的量化误差 ±5 s 就对应 ±2.75 km 的定位误差。</p><div class='figure'><svg viewBox='0 0 660 210' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='负压波在管线上传播与时间差定位示意'><text x='14' y='16' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>负压波定位：同一压力突降从漏点向两端传播，到达时刻之差决定位置</text><rect x='38' y='92' width='34' height='24' rx='5' fill='#faf7f0' stroke='#1d4e50'/><text x='55' y='108' font-size='9.5' fill='#123a3d' text-anchor='middle'>首站</text><rect x='588' y='92' width='34' height='24' rx='5' fill='#faf7f0' stroke='#355c74'/><text x='605' y='108' font-size='9.5' fill='#355c74' text-anchor='middle'>末站</text><path d='M70 122 L590 122' stroke='#e3dccd' stroke-width='7' stroke-linecap='round'/><path d='M70 122 L590 122' stroke='#99a3a4' stroke-width='1.4'/><text x='55' y='134' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>x = 0</text><text x='605' y='134' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>x = L = 120 km</text><path d='M360 102 L360 56' stroke='#a64b3c' stroke-width='1' stroke-dasharray='3 3'/><path d='M360 118 L351 102 L369 102 Z' fill='#a64b3c'/><text x='360' y='48' font-size='10' fill='#a64b3c' text-anchor='middle'>泄漏点 x（待求）</text><path d='M348 152 L186 152' stroke='#1d4e50' stroke-width='1.6'/><path d='M192 148 L182 152 L192 156 Z' fill='#1d4e50'/><path d='M372 152 L540 152' stroke='#355c74' stroke-width='1.6'/><path d='M534 148 L544 152 L534 156 Z' fill='#355c74'/><text x='262' y='168' font-size='9.5' fill='#123a3d' text-anchor='middle'>波前 1：到达首站用时 x / v = t1 − t0</text><text x='462' y='168' font-size='9.5' fill='#355c74' text-anchor='middle'>波前 2：到达末站用时 (L − x) / v = t2 − t0</text><rect x='14' y='178' width='632' height='26' rx='6' fill='#faf7f0' stroke='#e3dccd'/><text x='26' y='195' font-size='10.5' font-family='monospace' fill='#4a585c'>Δt = t1 − t2　→　x = (L + v · Δt) / 2　　v = 1100 m/s，Δt 差 1 s ≈ 定位差 550 m</text></svg></div><div class='figcap'><b>图 1</b><span>两个波前以同一速度从漏点出发，先到近端站、后到远端站。<b>Δt 与漏点位置是一一对应的</b>：漏点越靠近首站，Δt = t1 − t2 越负（可为负值）。所以定位精度的上限不是算法，而是波速 v 的标定精度与两站时钟的同步精度。</span></div>"
+        },
+        {
+          "no": 2,
+          "en": "INTERVENTION",
+          "title": "AI 能做什么",
+          "html": "<p>把这件事拆成三步可计算的动作。<b>① 突变检测</b>：对两站压力序列做滑动窗均值差 S(t) = 前 W 点均值 − 后 W 点均值，S 越过阈值并持续若干点即判为候选突变。S 的三角脉冲峰值出现在「突变时刻 + W」，所以可以在 10 s 历史库上做全天粗筛（计算量极小、不漏大漏量），报警后回捞 1 s 原始数据，用脉冲质心精估 t1、t2（0.3 s 量级）。</p><p><b>② 定位</b>：x = (L + v·Δt)/2，v 由放油试验或开关阀试验标定。<b>③ 交叉验证与误报抑制</b>：真泄漏的进出站流量差累计值会<b>单调偏离并持续增长</b>（漏量 32 m³/h 时约 22 min 越过 12 m³ 判据），而调阀、泵切换只造成<b>短时脉冲、几十分钟内回落到零</b>；工况操作记录给出第二道闸门。<b>三项判据同时满足才输出「真泄漏 + 位置」</b>，任一不满足则抑制为工况扰动。</p><div class='figure'><svg viewBox='0 0 660 216' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='流量平衡判别与三项判据'><text x='14' y='16' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>流量平衡：累计流量差 ΔV 是「真泄漏」与「工况扰动」的分界线</text><rect x='14' y='28' width='196' height='124' rx='8' fill='#fdfcf9' stroke='#e3dccd'/><text x='112' y='46' font-size='10.5' fill='#4a585c' text-anchor='middle'>真泄漏 · 漏量 2%</text><path d='M32 134 L32 56 M32 134 L196 134' stroke='#d3c9b6' fill='none'/><path d='M32 133 L60 132 L78 130 L94 118 L112 96 L138 70 L170 58 L194 52' stroke='#1d4e50' stroke-width='1.6' fill='none'/><path d='M32 100 L196 100' stroke='#a64b3c' stroke-width='1' stroke-dasharray='4 3'/><text x='194' y='96' font-size='9' fill='#a64b3c' text-anchor='end'>判据 12 m³</text><text x='112' y='148' font-size='9' fill='#99a3a4' text-anchor='middle'>累计 ΔV 单调上升、不回落</text><rect x='218' y='28' width='196' height='124' rx='8' fill='#fdfcf9' stroke='#e3dccd'/><text x='316' y='46' font-size='10.5' fill='#4a585c' text-anchor='middle'>工况扰动 · 调阀</text><path d='M236 134 L236 56 M236 134 L400 134' stroke='#d3c9b6' fill='none'/><path d='M236 133 L252 133 L264 92 L276 112 L292 126 L320 131 L360 132 L398 132' stroke='#a9742c' stroke-width='1.6' fill='none'/><path d='M236 100 L400 100' stroke='#a64b3c' stroke-width='1' stroke-dasharray='4 3'/><text x='316' y='148' font-size='9' fill='#99a3a4' text-anchor='middle'>短时脉冲，30—40 min 回落到 0</text><rect x='424' y='28' width='222' height='160' rx='8' fill='#faf7f0' stroke='#c8d9d1'/><text x='440' y='46' font-size='9.5' font-family='monospace' fill='#1d4e50' letter-spacing='1.2'>三项判据 · 缺一不报警</text><text x='438' y='72' font-size='10' fill='#1d4e50'>✓</text><text x='452' y='72' font-size='9.5' fill='#4a585c'>双端压力突变，|Δt| ≤ L / v</text><text x='438' y='96' font-size='10' fill='#1d4e50'>✓</text><text x='452' y='96' font-size='9.5' fill='#4a585c'>累计 ΔV &gt; 12 m³ 且仍在增长</text><text x='438' y='120' font-size='10' fill='#1d4e50'>✓</text><text x='452' y='120' font-size='9.5' fill='#4a585c'>工况操作记录未命中</text><path d='M440 134 L630 134' stroke='#d7e3dd' fill='none'/><rect x='436' y='142' width='196' height='20' rx='5' fill='#e7eee9' stroke='#c8dbd2'/><text x='446' y='156' font-size='9.5' fill='#123a3d'>三项全满足 → 真泄漏 + 位置</text><rect x='436' y='166' width='196' height='20' rx='5' fill='#f4e8d4' stroke='#e3d2b0'/><text x='446' y='180' font-size='9.5' fill='#83551f'>任一不满足 → 抑制为工况扰动</text></svg></div><div class='figcap'><b>图 2</b><span>两条曲线的区别只有一句话：<b>真泄漏的偏差不会自己回来</b>。调阀造成的进出站流量差是脉冲（管线重新建立平衡），泵切换是负向偏离后回复；而漏出去的油不会回来，累计流量差就一直长。工况操作记录则负责兜住「压力波形看起来一模一样、但流量差还没走完一个确认窗」的时段。</span></div>"
+        },
+        {
+          "no": 3,
+          "en": "DATA",
+          "title": "你需要准备什么",
+          "html": "<p>这套方法的门槛不高，但有两件事必须先做实：<b>波速标定</b>与<b>两站时钟同步</b>。它们决定了定位误差的下限——波速差 5% 就是 3 km 的位置偏差，两站时钟差 1 s 就是 550 m。所以数据清单里最容易被忽略的，往往是最后两项。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 5 项</span><span class='cl-prog'><span id='cl-txt'>0 / 5</span><span class='cl-bar'><i id='cl-fill'></i></span></div></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>两站压力</span><span class='cl-s'>首站出站、末站进站，1 s 原始数据 + 10 s 历史库</span></span><span class='cl-n'>核心时序</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>进出站流量与温度</span><span class='cl-s'>用于流量平衡法，1—10 s 采样</span></span><span class='cl-n'>交叉验证</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>工况操作记录</span><span class='cl-s'>调阀、启停泵、切换流程的时刻与幅度</span></span><span class='cl-n'>误报抑制的前提</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>泄漏事件台账</span><span class='cl-s'>位置、时刻、漏量、开挖或堵漏验证结果</span></span><span class='cl-n'>单管线数十起</span></div><div class='cl-item' data-cl='4'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>波速与同步基准</span><span class='cl-s'>管长、壁厚、含气率、GPS / 北斗对时偏差</span></span><span class='cl-n'>定位误差的下限</span></div></div>"
+        },
+        {
+          "no": 4,
+          "en": "DIFFICULTY",
+          "title": "技术难度与参考方向",
+          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='中'>难度 中</span><span class='small muted'>机理清楚、算法简单，难在误报率与弱信号检出</span></div><div class='meter'><i class='on'></i><i class='on'></i><i></i></div><p>算法本身是「滑动窗差分 + 阈值 + 时间差定位」，一个人两周能跑通。真正的难点有三处：<b>一</b>，小漏量（&lt; 1% 输量）的压力波幅与噪声同量级，只能靠更长的窗口、更低的噪声与流量平衡法兜底，代价是检测延迟从 1.5 min 变成 1—2 h；<b>二</b>，工况扰动的波形与泄漏高度相似，尤其是泵切换——它产生的负压波在两端的时间差刚好等于 L/v，算法会算出「漏点就在泵站附近」，必须靠工况记录与流量平衡两路独立判据共同否决；<b>三</b>，阈值与误报是一对矛盾：阈值订低了，噪声与工况把报警刷满，运维几个月内就会把系统关掉；订阅高了，渗漏永远检不出来。</p><p>建议的推进顺序：① 先把<b>波速标定与时钟同步</b>做扎实（这一步决定定位精度的上限，与算法无关）；② 用「滑动窗差分 + 阈值 + 持续判据」在历史数据上回放，统计误报与漏报，把阈值与窗口长度定下来；③ 再接流量平衡与工况记录做交叉验证，量化误报抑制的收益；④ 最后才考虑机器学习：把人工确认过的报警与误报做成标注集，用分类器替代固定阈值，让判据随季节与输量变化自适应。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>时序突变检测</span><span class='ref'>信号去噪与差分</span><span class='ref'>多源交叉验证与误报抑制</span><span class='ref'>阈值与窗口参数整定</span></div><div class='callout warn'><span class='ci'>注意</span><span>报警不是终点：负压波定位的工程精度按 <b>1% 管长</b>算，120 km 就是 ±1.2 km。系统的价值是把搜索范围从 120 km 压到 2 km，并给出到达时刻、时间差与流量差三条可复核的证据，而不是直接告诉运维「漏在这里」。凡是把定位结果当成确定位置去开挖而不再做任何核验的用法，都应该在方案评审阶段就被拦住。</span></div>"
+        }
+      ]
+    },
+    "workflow": {
+      "label": "案例流程",
+      "title": "某输油管道 120 km 管段负压波泄漏检测系统的落地流程",
+      "lead": [
+        "改造前的状态：SCADA 上只有两站压力与流量趋势，报警靠调度员盯屏；一次夜间渗漏从发生到巡线发现用了 3 h 40 min，定位靠沿线开挖找了两天。",
+        "改造后：算法在 10 s 历史库上全天粗筛突变，报警后回捞 1 s 原始数据做时间差定位，再用流量平衡与工况记录交叉验证；一次 2% 输量的泄漏在 88 s 内报警并给出 0.6% 管长以内的位置。"
+      ],
+      "stats": [
+        [
+          "管段长度",
+          "120 km"
+        ],
+        [
+          "压力采样",
+          "1 s / 10 s"
+        ],
+        [
+          "定位误差",
+          "≤ 1% 管长"
+        ],
+        [
+          "检测延迟",
+          "60—140 s"
+        ]
+      ],
+      "steps": [
+        {
+          "name": "波速标定与时钟同步",
+          "role": "数据",
+          "do": "用放油试验或计划内的阀室操作制造一次已知位置的压降，反算波速 v（含气率与温度不同，v 在 1000—1200 m/s 之间）；两站压力数据统一到 GPS / 北斗对时，同步偏差压到 0.1 s 以内。",
+          "effect": "定位公式中的两个常数确定下来：v 与两站时钟，定位误差不再是未知的系统偏差。",
+          "trap": "把 1100 m/s 当成常数直接上线：波速偏差 5% 就是 3 km 的位置误差，而且这个误差在全部报警里方向一致，很难靠统计发现。"
+        },
+        {
+          "name": "历史库粗筛：滑动窗均值差",
+          "role": "算法",
+          "do": "在 10 s 存储的双站压力上逐点计算 S = 前 60 s 均值 − 后 60 s 均值，S 越过固定阈值（0.045 MPa）且连续 3 点保持即判为候选突变，记录触发时刻与峰高。",
+          "effect": "全天 8640 点、两站合计毫秒级完成，漏量 2% 以上的泄漏不会漏掉。",
+          "trap": "阈值必须按现场噪声水平定，不能照抄别的管线；阈值订得比噪声底还低，粗筛会天天报。"
+        },
+        {
+          "name": "报警后回捞 1 s 数据精定位",
+          "role": "算法核心",
+          "do": "以候选时刻为中心回捞前后各 10 min 的 1 s 原始数据，用同一套 S 变换（W = 8 s），取 S 三角脉冲的峰值两侧各 W 个样本做 S² 加权质心，得到两端突变时刻 t1、t2，代入 x = (L + v·Δt)/2。",
+          "effect": "Δt 的估计误差压到 0.3 s 量级，120 km 管段的定位误差稳定落在 1% 管长（1.2 km）以内，本示范为 59 m（0.05%），与漏点在管段上的位置无关。",
+          "trap": "用阈值穿越点直接当突变时刻会引入与波幅相关的系统偏差：两端波幅不同（远端衰减），偏差也不同，做差后变成定位误差。质心法对这个偏差不敏感。"
+        },
+        {
+          "name": "交叉验证与误报抑制",
+          "role": "算法",
+          "do": "对每个候选事件做两件独立的事：① 看进出站流量差累计值在报警后 60 min 内是否单调增长、越过 12 m³ 判据；② 查工况操作记录，触发时刻前后 ±180 s 内是否有调阀 / 启停泵。三项判据（双端突变、流量平衡、工况记录）同时满足才输出真泄漏。",
+          "effect": "24 h 内稳态运行与调阀工况零误报；泵切换被识别为工况扰动（算法会算出「漏点在泵站」，被两项判据否决）。",
+          "trap": "只保留一路判据最危险：关掉工况记录，调阀会被当成泄漏；关掉流量平衡，泵切换也会被当成泄漏。两路独立证据是这套方法唯一能扛住现场的原因。"
+        },
+        {
+          "name": "报警处置与台账回写",
+          "role": "人工",
+          "do": "调度员按系统给出的位置区间（±1% 管长）安排巡线，结合里程桩与阀室位置缩小范围；确认结果（真泄漏 / 误报 / 工况扰动）与开挖验证位置回写台账。",
+          "effect": "每季度复盘一次定位误差分布与误报来源，波速 v 与阈值随之修正，跨年度定位误差逐步收敛。",
+          "trap": "误报同样是数据：不记录「为什么这次判错了」，阈值就永远只能靠拍脑袋定；不记录真值位置，就无法评估定位误差是算法问题还是标定问题。"
+        }
+      ],
+      "metrics": {
+        "title": "怎么算“做对了”",
+        "html": "<p>不要用「报警准确率」这种口径——泄漏事件在一天的数据里占不到万分之一，只要不报警，准确率就接近 100%。可验收的是下面四项：</p><table class='dtable'><thead><tr><th>指标</th><th>定义</th><th>本案例取值</th></tr></thead><tbody><tr><td>定位误差</td><td>算法给出的漏点位置与实测位置（开挖验证 / 试验放油）之差，用米与占管长百分比两个口径</td><td>59 m，0.05% 管长（2% 漏量、62% 位置）</td></tr><tr><td>检测延迟</td><td>从泄漏发生到系统给出报警的时间，含波前传播时间与 1 s 数据确认窗</td><td>88 s（2% 漏量、62% 位置）；靠近一端时只剩单端报警，改用流量平衡兜底（约 25 min）</td></tr><tr><td>检出率</td><td>台账内已知泄漏被检出的比例，按漏量分档统计</td><td>2% 以上 100%；0.5% 需流量平衡兜底</td></tr><tr><td>误报次数</td><td>单位时间（每天 / 每千公里）内需要人工排除的报警，按工况与噪声来源分类</td><td>0 次 / 24 h（稳态与调阀场景）</td></tr></tbody></table><p>四项里<b>最先该盯的是误报次数</b>：定位误差差几百米工程上可以接受，误报每天几次会让调度员直接放弃系统。所以阈值不能只按「漏检最少」来订，而要按「误报可承受 + 小漏量交给流量平衡法慢慢确认」来订——这也是表里第 2 行近端泄漏延迟偏大的原因：用同一个阈值去覆盖全线，就必须接受延迟的差异。</p>"
+      },
+      "fails": [
+        {
+          "name": "波速当成常数",
+          "why": "含气率、温度、管壁结垢都会改变压力波速，v 偏差 5% 就是 3 km 的定位误差，且方向一致。必须按季节与输送介质分段标定，或直接用两次已知位置的试验反算。"
+        },
+        {
+          "name": "两站时钟不同步",
+          "why": "Δt 是两站数据的差，1 s 的时钟偏差直接等于 550 m 的位置偏差，比算法误差大一个量级；而且它不会自己暴露，只会让所有报警统一偏向一侧。"
+        },
+        {
+          "name": "阈值订得太低换检出率",
+          "why": "把阈值拖到噪声附近，小漏量确实能检出来，但噪声与调阀会把报警刷满。正确的顺序是先把误报压到可承受，小漏量交给流量平衡法（延迟分钟级到小时级）兜底，而不是用压力阈值硬扛。"
+        }
+      ]
+    },
+    "demo": {
+      "mode": "auto",
+      "html": "demo/index.html",
+      "js": "demo/demo.js",
+      "label": "可运行示范",
+      "intro": "切换稳态运行 / 调阀扰动 / 启泵扰动 / 泄漏四种场景，拖动泄漏位置、漏量与噪声滑杆，看双站压力突变检测、Δt 定位、流量平衡交叉验证与工况感知怎么把真泄漏与工况扰动分开，并给出定位误差、检测延迟与误报计数。",
+      "height": 800
+    }
+  }
+}

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：压裂参数智能优化（代理模型 + 贝叶斯优化）</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .figwrap{border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 4px 2px}
+  .figwrap svg{display:block;width:100%;height:auto}
+  .pick{background:var(--jade-l)}
+</style>
+</head>
+<body>
+
+<div class="dhead">
+  <div>
+    <div class="dkick">SURROGATE + BAYESIAN OPT · 压裂参数寻优</div>
+    <h1>排量 × 砂比 → 产能指数（施工压力约束下）</h1>
+    <p class="lead">一口井的压裂参数组合有上千种：逐套跑数值模拟要几十小时，逐套上井试要花掉几百万。这里用
+    <b>高斯过程 / RBF 代理模型</b>替掉昂贵的压裂模拟器，再用 <b>EI 采集函数</b>每轮只挑 3 个新点去「模拟」，
+    看在压力窗口内逼近最优方案的模拟次数能不能压到 20—30 次。</p>
+  </div>
+  <div class="dhead-r">
+    <div class="dstat"><div class="k">已评估</div><div class="v" id="st-n">—</div></div>
+    <div class="dstat good"><div class="k">当前最优 PI</div><div class="v" id="st-best">—</div></div>
+    <div class="dstat"><div class="k">真实最优</div><div class="v" id="st-true">—</div></div>
+    <div class="dstat warn"><div class="k">代理误差</div><div class="v" id="st-rmse">—</div></div>
+  </div>
+</div>
+
+<div class="dctl">
+  <div class="grp"><span class="glbl">采样策略</span><div class="seg" id="seg-strat"></div></div>
+  <div class="grp">
+    <button class="dbtn pri" id="run">运行一轮优化 +3</button>
+    <button class="dbtn" id="auto">自动跑到收敛</button>
+    <button class="dbtn" id="reset">重置</button>
+  </div>
+  <div class="grp">
+    <label class="tog on" id="tog-true"><i></i>真实响应面</label>
+    <label class="tog" id="tog-proxy"><i></i>代理预测面</label>
+    <label class="tog on" id="tog-feas"><i></i>可行性边界</label>
+  </div>
+  <div class="ctl-s"><label>测量噪声</label><input type="range" id="r-noise" min="0" max="4" step="0.5" value="1.5"><output id="o-noise">1.5 %</output></div>
+</div>
+
+<div class="dgrid c2">
+  <div class="dcol">
+    <div class="dread">
+      <div><div class="k">已评估方案</div><div class="v" id="r-n">—</div></div>
+      <div><div class="k">当前最优（真实）</div><div class="v ok" id="r-best">—</div></div>
+      <div><div class="k">与真实最优差距</div><div class="v warn" id="r-gap">—</div></div>
+      <div><div class="k">代理模型 RMSE</div><div class="v" id="r-rmse">—</div></div>
+      <div><div class="k">推荐点压力余量</div><div class="v" id="r-margin">—</div></div>
+    </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>参数空间响应面：排量 × 砂比</b><span id="c-hint">—</span></div>
+      <div class="figwrap"><svg id="contour" viewBox="0 0 680 430" role="img" aria-label="压裂参数响应面等高线与采样点"></svg></div>
+      <div class="dfig-foot">
+        <span><i class="sq" style="background:#1d4e50"></i>真实响应面（越深产能越高）</span>
+        <span><i style="border-top:1.5px dashed #355c74;background:none"></i>代理预测面</span>
+        <span><i class="sq" style="background:#cdd8e2"></i>初始设计点</span>
+        <span><i class="sq" style="background:#123a3d"></i>后续采样（浅 → 深 = 轮次）</span>
+        <span><i class="sq" style="background:rgba(192,118,43,.35)"></i>压力超限：不可行</span>
+      </div>
+    </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>收敛曲线：已评估次数 → 当前最优产能</b><span id="v-hint">—</span></div>
+      <div class="figwrap"><svg id="conv" viewBox="0 0 680 240" role="img" aria-label="三种采样策略的收敛曲线对比"></svg></div>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>贝叶斯优化（EI）</span>
+        <span><i style="background:#a9742c"></i>网格搜索（7×7）</span>
+        <span><i style="background:#99a3a4"></i>随机采样</span>
+        <span><i class="dash"></i>细网格扫描得到的真实最优</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>推荐压裂方案</b><span id="card-hint">—</span></div>
+      <div id="card"></div>
+    </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>帕累托前沿：产能 vs 砂量</b><span>单段</span></div>
+      <div class="figwrap"><svg id="pareto" viewBox="0 0 340 220" role="img" aria-label="产能指数与砂量的帕累托前沿"></svg></div>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>非支配前缘</span>
+        <span><i class="sq" style="background:#9ccdb9"></i>已评估方案</span>
+        <span><i class="sq" style="background:#ffffff;border:1px solid #a64b3c"></i>邻井经验方案</span>
+      </div>
+    </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>敏感性龙卷风图 · ±10% 单变量扰动</b><span>固定其它变量，看 PI 往哪边动</span></div>
+      <div class="figwrap"><svg id="tornado" viewBox="0 0 340 190" role="img" aria-label="压裂参数敏感性龙卷风图"></svg></div>
+      <div class="dfig-foot"><span>基于解析响应面 · 仅示意敏感性排序</span><span>红框 = 扰动后施工压力超限</span></div>
+    </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>本轮 EI 候选（Top-3）</b><span>采集函数选点</span></div>
+      <table class="dtable"><thead><tr><th>Q m³/min</th><th class="num">S %</th><th class="num">预测 PI</th><th class="num">EI</th><th>性质</th></tr></thead><tbody id="cand"></tbody></table>
+      <div id="cand-foot" style="font-size:10.5px;color:var(--ink-4);line-height:1.6;margin-top:7px"></div>
+    </div>
+
+    <p class="dnote" id="note"></p>
+  </div>
+</div>
+
+<script src="demo.js"></script>
+</body>
+</html>

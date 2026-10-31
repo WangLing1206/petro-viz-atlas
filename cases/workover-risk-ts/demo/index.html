@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：修井作业风险预警</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  #proc{display:block;width:100%;height:600px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:crosshair}
+  .alarm{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:4px 0;border-bottom:1px solid var(--line);font-size:10.5px}
+  .alarm:last-child{border-bottom:0}
+  .alarm .t{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);padding-top:1px}
+  .alarm .a{font-size:9.5px;color:var(--ink-4);line-height:1.45;margin-top:2px}
+  .alarm.lv1{border-left:3px solid var(--info);padding-left:8px}
+  .alarm.lv2{border-left:3px solid var(--warn);padding-left:8px}
+  .alarm.lv3{border-left:3px solid var(--bad);padding-left:8px}
+  .empty{font-size:11px;color:var(--ink-4);padding:8px 0;line-height:1.6}
+  :root{--info:#3a6ea5;--info-bg:#e8eef6}
+  .db.info{color:var(--info);border-color:rgba(58,110,165,.3);background:var(--info-bg)}
+  .dstat.info .v{color:var(--info)}
+  .dstat .v small{font-size:8.5px;color:var(--ink-4);margin-left:2px;font-family:var(--sans);white-space:nowrap}
+  .reads .r{display:grid;grid-template-columns:52px 1fr 50px 44px;gap:6px;align-items:center;font-size:11px;padding:2px 0}
+  .reads .nm{color:var(--ink-3);font-size:10.5px;white-space:nowrap}
+  .reads .nm small{font-size:8px;color:var(--ink-4);margin-left:2px}
+  .reads .bar{height:5px;background:var(--paper-3);border-radius:3px;overflow:hidden;min-width:30px}
+  .reads .bar i{display:block;height:100%;width:0;background:var(--ok);transition:width .1s linear}
+  .reads .val{font-family:var(--mono);text-align:right;font-size:10.5px;color:var(--ink)}
+  .reads .z{font-family:var(--mono);text-align:right;font-size:10.5px}
+  .lg3{display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;font-size:9px;color:var(--ink-4);margin-top:4px;padding-top:4px;border-top:1px solid var(--line)}
+  .lg3 > span{display:flex;align-items:center;gap:4px;white-space:nowrap;min-width:0}
+  .lg3 i{width:8px;height:8px;border-radius:2px;display:block;flex-shrink:0}
+  .rule{padding:4px 0;border-bottom:1px dashed var(--line);font-size:10.5px}
+  .rule:last-child{border-bottom:0}
+  .rule .hd{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .rule .hd b{font-size:11px}
+  .rule .sc{font-family:var(--mono);font-size:9.5px;color:var(--ink-4);white-space:nowrap}
+  .rule .cond{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px}
+  .rule .c{font-family:var(--mono);font-size:8.5px;padding:1px 5px;border:1px solid var(--line-2);border-radius:4px;color:var(--ink-4);white-space:nowrap}
+  .rule .c.on{border-color:rgba(58,110,165,.42);background:rgba(58,110,165,.09);color:var(--info)}
+  .rule .a{font-size:9.5px;color:var(--ink-4);margin-top:3px;line-height:1.45}
+  .ordlist{font-size:10px;color:var(--ink-3);line-height:1.4}
+  .ordlist .row{display:grid;grid-template-columns:80px minmax(0,1fr);gap:6px;padding:1.5px 0;border-bottom:1px dashed var(--line)}
+  .ordlist .row:last-child{border-bottom:0}
+  .ordlist .tm{font-family:var(--mono);font-size:9px;color:var(--ink-4);white-space:nowrap;padding-top:1px}
+  .ordlist .nm{color:var(--ink)}
+  .ordlist .sub{color:var(--ink-4);font-size:9px}
+  .scrub{width:100%;margin-top:7px;height:14px;accent-color:var(--jade);cursor:pointer}
+  .scrub-ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8.5px;color:var(--ink-4);margin-top:-1px;padding:0 2px}
+  .hint{font-size:10px;color:var(--ink-4);margin:-3px 0 10px 13px;line-height:1.5}
+  #chk-phase{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  .tog:focus-within{outline:2px solid rgba(58,110,165,.35);outline-offset:2px;border-radius:4px}
+  .dctl{gap:14px}
+  .dctl .ctl-s label{font-size:9px}
+  @media (max-width:760px){#proc{height:520px}.dhead-r{justify-content:flex-start}}
+</style>
+</head>
+<body>
+
+<div class="dhead">
+  <div>
+    <div class="dkick">ANOMALY DETECTION · 多变量联合判据</div>
+    <h1>修井作业多通道参数 → 分级风险预警</h1>
+    <p class="lead">一次 60 分钟的修井作业：压井/井控 → 起原井管柱 → 通井/打印 → 磨铣/打捞 → 停钻/活动管柱 → 震击解卡 → 循环洗井 → 完井试压。
+    悬重、扭矩、立压、套压、返出、池体积六条通道，灰色带是逐工序热启动后的 EWMA 慢基线 ±2σ。
+    主报警来自联合判据（扭矩↑且悬重↓ / 立压↓且返出或池体积↓）；单通道 |z| 只在关闭工况感知时作为朴素阈值对照。2 s/点，共 1800 点。</p>
+  </div>
+  <div class="dhead-r">
+    <div class="dstat" id="card-risk"><div class="k">当前风险分</div><div class="v"><span id="st-risk">—</span><small>σ</small></div></div>
+    <div class="dstat" id="card-eps"><div class="k">报警 episode</div><div class="v"><span id="st-n">—</span><small id="st-fp"> · 误报 —</small></div></div>
+    <div class="dstat" id="card-det"><div class="k">全场检出 / 漏报</div><div class="v"><span id="st-det">—</span><small id="st-miss"> · 漏报 —</small></div></div>
+    <div class="dstat" id="card-lead"><div class="k">中位提前量</div><div class="v"><span id="st-lead">—</span><small>min</small></div></div>
+  </div>
+</div>
+
+<div class="dctl">
+  <button class="dbtn pri" id="play" aria-pressed="false" aria-label="播放或暂停作业过程">▶ 播放作业过程</button>
+  <button class="dbtn" id="reset" aria-label="重置到 0 分钟并准备重播">↺ 重置/重播</button>
+  <div class="ctl-s">
+    <span class="glbl">速度</span>
+    <div class="seg" id="spd" role="group" aria-label="播放速度">
+      <button type="button" data-spd="0.5" aria-pressed="false">0.5×</button>
+      <button type="button" data-spd="1" class="on" aria-pressed="true">1×</button>
+      <button type="button" data-spd="2" aria-pressed="false">2×</button>
+    </div>
+  </div>
+  <div class="ctl-s">
+    <label for="r-thr">预警阈值</label>
+    <input type="range" id="r-thr" min="1.8" max="4" step="0.1" value="2.5" aria-label="预警阈值，单位 sigma">
+    <output id="o-thr" for="r-thr">2.5 σ</output>
+  </div>
+  <div class="ctl-s">
+    <label for="r-run">持续判据</label>
+    <input type="range" id="r-run" min="2" max="20" step="1" value="6" aria-label="连续超阈值点数">
+    <output id="o-run" for="r-run">6 点 / 12 s</output>
+  </div>
+  <label class="tog on" id="tog-phase" for="chk-phase"><input type="checkbox" id="chk-phase" checked aria-label="工况感知（逐工序重启基线）"><i></i>工况感知</label>
+  <span class="sp"></span>
+  <span class="db plain" title="只使用一条逐工序慢基线，没有快基线">慢基线 λ=0.005 · 无快基线</span>
+</div>
+<p class="hint" id="thr-hint">分级随滑杆平移：关注 = 阈值 −0.5σ，预警 = 阈值，报警 = 阈值 +0.5σ 且持续 ≥60 s（默认即关注 2.0 / 预警 2.5 / 报警 3.0σ）。</p>
+
+<div class="dgrid c2">
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>六通道参数、联合风险分与自适应基线</b><span id="time-hint">t = 0.0 min · 2 s/点</span></div>
+      <canvas id="proc" width="1400" height="1200" role="img"
+        aria-label="修井作业六通道时序图：悬重、扭矩、立压、套压、返出与池体积；含逐工序基线带、联合风险分、报警区间和真值事件前兆/发生时刻。右侧当前读数表是文字替代。"
+        aria-describedby="zs"></canvas>
+      <input type="range" class="scrub" id="scrub" min="0" max="60" step="0.1" value="0" aria-label="作业时间轴，拖动定位">
+      <div class="scrub-ticks"><span>0 min</span><span>15</span><span>30</span><span>45</span><span>60 min</span></div>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>悬重</span>
+        <span><i style="background:#a9742c"></i>扭矩</span>
+        <span><i style="background:#355c74"></i>立压</span>
+        <span><i style="background:#6e6a3c"></i>套压</span>
+        <span><i style="background:#3a7d6b"></i>返出</span>
+        <span><i style="background:#7a5c8a"></i>池体积</span>
+        <span><i style="background:#c4c8c0;height:8px"></i>基线 ±2σ</span>
+        <span><i style="border-top:1.5px dashed #a9742c;background:none;height:0"></i>真值前兆</span>
+        <span><i style="background:#a64b3c"></i>真值发生</span>
+        <span><i style="background:#3a6ea5;height:8px"></i>关注</span>
+        <span><i style="background:#a9742c;height:8px"></i>预警</span>
+        <span><i style="background:#a64b3c;height:8px"></i>报警</span>
+      </div>
+    </div>
+    <p class="dnote" id="note"></p>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>当前读数与 z 分数</b><span>文字替代 · 随游标更新</span></div>
+      <div id="zs" class="reads"></div>
+      <div class="lg3">
+        <span><i style="background:#3d7455"></i><span id="lg-n">正常 &lt;2.0σ</span></span>
+        <span><i style="background:#3a6ea5"></i><span id="lg-1">关注 ≥2.0σ</span></span>
+        <span><i style="background:#a9742c"></i><span id="lg-2">预警 ≥2.5σ</span></span>
+        <span><i style="background:#a64b3c"></i><span id="lg-3">报警 ≥3.0σ 且 ≥60 s</span></span>
+      </div>
+    </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>联合判据（多变量）</b><span>主报警来源</span></div>
+      <div id="rules"></div>
+    </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>报警 episode</b><span id="ep-hint">连续/相邻报警已合并 · 只标起点</span></div>
+      <div id="alarms"></div>
+    </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>工序顺序与已知扰动</b><span>人工工序记录（非自动识别）</span></div>
+      <div id="phases" class="ordlist"></div>
+    </div>
+  </div>
+</div>
+
+<script src="demo.js"></script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+{
+  "id": "fishing-tool-kg",
+  "sceneId": "wo2",
+  "methods": [
+    "kg"
+  ],
+  "title": "落物打捞工具智能选型：匹配矩阵",
+  "version": "1.1.0",
+  "updated": "2026-10-30",
+  "status": "ready",
+  "tabs": {
+    "background": {
+      "label": "专业背景",
+      "lede": "井下落物（油管、抽油杆、电缆、钢球、井下工具）形态各异，打捞工具的选择取决于落物尺寸、形态、所在井段与井身结构。现场的做法常常是「带四套工具下去试试看」——这是修井里最典型的「用起下钻次数换判断力」。本案例把工具手册变成一张可计算的匹配矩阵，用硬约束 + 软评分把「该带哪几套」算出来。",
+      "judge": [
+        {
+          "label": "任务类型",
+          "value": "分类 + 规则匹配",
+          "desc": "落物形态分类 → 工具适用性排序"
+        },
+        {
+          "label": "数据门槛",
+          "value": "300—1000 例",
+          "desc": "打捞记录 + 工具规格台账"
+        },
+        {
+          "label": "可见收益",
+          "value": "示范默认 1 趟",
+          "desc": "单井次省 1—2 天工期"
+        },
+        {
+          "label": "难度",
+          "value": "中",
+          "desc": "落物描述是文本，需先结构化",
+          "html": "<span class='dtag' data-d='中'>难度 中</span>"
+        }
+      ],
+      "sections": [
+        {
+          "no": 1,
+          "en": "PROBLEM",
+          "title": "当前做法与问题",
+          "html": "<p>落物打捞的难点<b>不在操作，在判断</b>：同样是一根断脱的油管，落底与悬空要用不同的工具，井斜 40° 的井里「一把抓」成功率会明显下降，而铁磁性小件用磁力打捞器一次就上来。这些判断现在全在打捞工程师的经验里，工具手册只给规格、不给选择策略。</p><p>于是现场普遍采用「多带几套」的保险做法：一趟钻带 3—4 套工具，用掉 1 套。多一次起下钻大约 1—2 天、十几万元——一个区块一年几十井次，这笔钱非常可观。</p><div class='figure'><svg viewBox='0 0 660 210' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='多带工具的代价'><rect x='10' y='20' width='286' height='176' rx='9' fill='#fdfcf9' stroke='#e3dccd'/><text x='28' y='40' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>井口 · 一趟钻带下去的工具</text><rect x='30' y='52' width='56' height='120' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><rect x='96' y='52' width='56' height='120' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><rect x='162' y='52' width='56' height='120' rx='4' fill='#e7eee9' stroke='#c8dbd2'/><rect x='228' y='52' width='56' height='120' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><text x='58' y='108' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>卡瓦</text><text x='58' y='122' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>打捞筒</text><text x='124' y='108' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>一把抓</text><text x='124' y='122' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>（备选）</text><text x='190' y='108' font-size='9.5' fill='#123a3d' text-anchor='middle'>磁力</text><text x='190' y='122' font-size='9.5' fill='#123a3d' text-anchor='middle'>打捞器</text><text x='256' y='108' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>磨鞋</text><text x='256' y='122' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>（未用）</text><text x='30' y='186' font-size='10' fill='#a64b3c'>带 4 套下去 · 只有 1 套用上 · 其余重新起下</text><rect x='336' y='20' width='314' height='176' rx='9' fill='#faf7f0' stroke='#c8d9d1'/><text x='354' y='40' font-size='9.5' font-family='monospace' fill='#1d4e50' letter-spacing='1.2'>每多一次起下钻的代价</text><rect x='364' y='146' width='34' height='30' fill='#c8dbd2'/><rect x='404' y='126' width='34' height='50' fill='#9ab8ac'/><rect x='444' y='98' width='34' height='78' fill='#5f8f7f'/><text x='381' y='140' font-size='9' fill='#4a585c' text-anchor='middle'>1 次</text><text x='421' y='120' font-size='9' fill='#4a585c' text-anchor='middle'>2 次</text><text x='461' y='92' font-size='9' fill='#4a585c' text-anchor='middle'>3 次</text><text x='381' y='186' font-size='9' fill='#99a3a4' text-anchor='middle'>3 天</text><text x='421' y='186' font-size='9' fill='#99a3a4' text-anchor='middle'>5 天</text><text x='461' y='186' font-size='9' fill='#99a3a4' text-anchor='middle'>8 天</text><text x='516' y='104' font-size='10.5' fill='#123a3d'>工期随起下钻次数</text><text x='516' y='122' font-size='10.5' fill='#123a3d'>近似线性增长</text><text x='516' y='146' font-size='10' fill='#a64b3c'>单井次成本 30 → 100 万元</text><text x='516' y='166' font-size='10' fill='#6f7a7c'>「多带一套」的保险</text><text x='516' y='182' font-size='10' fill='#6f7a7c'>其实是把成本推给工期</text></svg></div><div class='figcap'><b>图 1</b><span>把工具选型做对，等于直接把起下钻次数从 2—3 次压到 1 趟（示范默认）。这是修井环节里<b>投入产出最直接</b>的一个智能化切口：不需要新的井下工具，只需要更准的判断。</span></div>"
+        },
+        {
+          "no": 2,
+          "en": "INTERVENTION",
+          "title": "AI 能做什么",
+          "html": "<p>做法分两步。第一步把工具手册变成<b>结构化的适用条件</b>：每件工具写成一条记录——工具外径、内孔、可捞落物外径或内径区间、最小咬合长度 / 最大容纳长度、允许最大井斜、是否需循环、是否需落底、历史成功率。这里有一条硬性的几何关系：<b>外部套入式工具必须满足「可捞上限 &lt; 工具内孔 &lt; 工具外径」</b>，否则落物进不去，或者工具根本进不了套管。公锥、捞矛按<b>落物内径</b>选型，母锥、卡瓦筒按<b>落物外径</b>选型，不能用同一个区间糊过去。</p><p>第二步把落物描述也变成结构化输入（形态、外径、内径、长度、材质、井斜、落底三态、能否循环、卡阻状态），然后做<b>两级筛选</b>：</p><p><b>硬约束真排除</b>：工具外径 + 单边 6 mm 间隙超过套管内<b>通径</b>、落物外径 / 内径超出可捞区间、磁力打捞器吸非铁磁性落物、井斜超过工具允许值、需循环但本井不能循环、需落底但落物悬空、落物长度小于最小咬合长度或大于工具可容纳长度——这些选项直接标「不可用」，不进入推荐，也不靠扣分蒙混。<b>软评分</b>再对剩下的候选按「形态匹配 × 0.32 + 尺寸隶属度 × 0.26 + 井斜适应性 × 0.16 + 历史成功率 × 0.16 + 工况条件 × 0.10」排序，输出首选 + 备选与每一分的理由；落物卡阻或砂埋时，在推荐工具后追加<b>震击器 + 安全接头</b>的工具串。</p><div class='figure'><svg viewBox='0 0 660 250' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='落物形态与打捞工具匹配矩阵'><text x='16' y='18' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>匹配矩阵 · 行 = 落物形态，列 = 打捞工具（色深 = 形态适用度）</text><g font-size='8.5' fill='#99a3a4' text-anchor='middle'><text x='100' y='28'>卡瓦</text><text x='100' y='38'>打捞筒</text><text x='150' y='28'>小径</text><text x='150' y='38'>卡瓦筒</text><text x='200' y='28'>母锥</text><text x='250' y='28'>公锥</text><text x='300' y='28'>捞矛</text><text x='350' y='28'>一把抓</text><text x='400' y='28'>磁力</text><text x='400' y='38'>打捞器</text><text x='450' y='28'>篮式</text><text x='450' y='38'>捞筒</text><text x='500' y='28'>绳类</text><text x='500' y='38'>打捞钩</text><text x='550' y='28'>细钢丝</text><text x='550' y='38'>捞钩</text><text x='600' y='28'>抽油杆</text><text x='600' y='38'>打捞筒</text></g><g font-size='10' fill='#4a585c'><text x='16' y='67'>管状体</text><text x='16' y='101'>杆状体</text><text x='16' y='135'>柔索类</text><text x='16' y='169'>实心小件</text><text x='16' y='203'>大直径工具</text></g><rect x='78' y='50' width='44' height='26' rx='3' fill='#1d4e50'/><rect x='128' y='50' width='44' height='26' rx='3' fill='#1d4e50'/><rect x='178' y='50' width='44' height='26' rx='3' fill='#5f8f7f'/><rect x='228' y='50' width='44' height='26' rx='3' fill='#5f8f7f'/><rect x='278' y='50' width='44' height='26' rx='3' fill='#1d4e50'/><rect x='328' y='50' width='44' height='26' rx='3' fill='#d7e3dd'/><rect x='378' y='50' width='44' height='26' rx='3' fill='#eae6db'/><rect x='428' y='50' width='44' height='26' rx='3' fill='#eae6db'/><rect x='478' y='50' width='44' height='26' rx='3' fill='#eae6db'/><rect x='528' y='50' width='44' height='26' rx='3' fill='#eae6db'/><rect x='578' y='50' width='44' height='26' rx='3' fill='#d7e3dd'/><rect x='78' y='84' width='44' height='26' rx='3' fill='#9ab8ac'/><rect x='128' y='84' width='44' height='26' rx='3' fill='#9ab8ac'/><rect x='178' y='84' width='44' height='26' rx='3' fill='#c8dbd2'/><rect x='228' y='84' width='44' height='26' rx='3' fill='#c8dbd2'/><rect x='278' y='84' width='44' height='26' rx='3' fill='#c8dbd2'/><rect x='328' y='84' width='44' height='26' rx='3' fill='#c8dbd2'/><rect x='378' y='84' width='44' height='26' rx='3' fill='#d7e3dd'/><rect x='428' y='84' width='44' height='26' rx='3' fill='#d7e3dd'/><rect x='478' y='84' width='44' height='26' rx='3' fill='#c8dbd2'/><rect x='528' y='84' width='44' height='26' rx='3' fill='#d7e3dd'/><rect x='578' y='84' width='44' height='26' rx='3' fill='#1d4e50'/><rect x='78' y='118' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='128' y='118' width='44' height='26' rx='3' fill='#eae6db'/><rect x='178' y='118' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='228' y='118' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='278' y='118' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='328' y='118' width='44' height='26' rx='3' fill='#c8dbd2'/><rect x='378' y='118' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='428' y='118' width='44' height='26' rx='3' fill='#c8dbd2'/><rect x='478' y='118' width='44' height='26' rx='3' fill='#1d4e50'/><rect x='528' y='118' width='44' height='26' rx='3' fill='#1d4e50'/><rect x='578' y='118' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='78' y='152' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='128' y='152' width='44' height='26' rx='3' fill='#eae6db'/><rect x='178' y='152' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='228' y='152' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='278' y='152' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='328' y='152' width='44' height='26' rx='3' fill='#1d4e50'/><rect x='378' y='152' width='44' height='26' rx='3' fill='#1d4e50'/><rect x='428' y='152' width='44' height='26' rx='3' fill='#5f8f7f'/><rect x='478' y='152' width='44' height='26' rx='3' fill='#eae6db'/><rect x='528' y='152' width='44' height='26' rx='3' fill='#eae6db'/><rect x='578' y='152' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='78' y='186' width='44' height='26' rx='3' fill='#9ab8ac'/><rect x='128' y='186' width='44' height='26' rx='3' fill='#9ab8ac'/><rect x='178' y='186' width='44' height='26' rx='3' fill='#9ab8ac'/><rect x='228' y='186' width='44' height='26' rx='3' fill='#c8dbd2'/><rect x='278' y='186' width='44' height='26' rx='3' fill='#9ab8ac'/><rect x='328' y='186' width='44' height='26' rx='3' fill='#d7e3dd'/><rect x='378' y='186' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='428' y='186' width='44' height='26' rx='3' fill='#eae6db'/><rect x='478' y='186' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='528' y='186' width='44' height='26' rx='3' fill='#f0ece1'/><rect x='578' y='186' width='44' height='26' rx='3' fill='#f0ece1'/><text x='16' y='222' font-size='9' fill='#6f7a7c'>公锥 / 捞矛按落物内径选型；母锥 / 卡瓦筒按落物外径选型；一把抓需落底；磁力仅铁磁性；篮式仅 0—5 mm 细碎屑。</text><text x='16' y='240' font-size='9' fill='#99a3a4'>套铣筒与平底磨鞋属于解卡 / 磨铣工序，不参与落物形态评分；磨铣后清屑用篮式捞筒 / 反循环。</text></svg></div><div class='figcap'><b>图 2</b><span>矩阵本身不复杂，难的是<b>把落物描述塞进某一行</b>：「电缆带着钢丝绳和几块碎胶皮」要拆成柔索类 + 碎屑，才能同时推荐绳类打捞钩与篮式捞筒。套铣筒与平底磨鞋是<b>解卡 / 磨铣工序</b>，不参与这张形态矩阵的打分。</span></div>"
+        },
+        {
+          "no": 3,
+          "en": "DATA",
+          "title": "你需要准备什么",
+          "html": "<p>这份清单的特别之处在于：<b>知识表比数据量更重要</b>。工具台账整理得越细（尤其是「可捞区间按外径还是内径」与「最小咬合长度」这两列），推荐越准；打捞记录的作用是给每个工具一个真实的历史成功率。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 4 项</span><span class='cl-prog'><span id='cl-txt'>0 / 4</span><span class='cl-bar'><i id='cl-fill'></i></span></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>落物描述与图像</span><span class='cl-s'>形态、外径、内径、长度、材质、所在深度、落底三态、卡阻状态</span></span><span class='cl-n'>现场记录 + 井口照片</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>打捞记录</span><span class='cl-s'>工具组合、起下钻次数、是否一次捞出</span></span><span class='cl-n'>300—1000 例</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>工具台账（规格）</span><span class='cl-s'>适用形态、外径、内孔、可捞外径 / 内径区间、最小咬合长度、最大容纳长度、允许井斜、是否需循环、是否需落底</span></span><span class='cl-n'>知识表，11 + 2 条</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>井身结构数据</span><span class='cl-s'>套管规格与通径（不是外径）、井斜、井温、落物以上井段状况</span></span><span class='cl-n'>作为硬约束输入</span></div></div>"
+        },
+        {
+          "no": 4,
+          "en": "DIFFICULTY",
+          "title": "技术难度与参考方向",
+          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='中'>难度 中</span><span class='small muted'>难点是输入的不确定性，不是算法的复杂度</span></div><div class='meter'><i class='on'></i><i class='on'></i></div><p>难度定在「中」是因为<b>方法本身不复杂</b>（规则 + 加权评分，可解释性极好，工程师一眼能看懂为什么推荐它），但有三处必须处理干净：<b>一</b>，落物描述是文本，「几根断油管带一个接箍」要能抽出「管状体 / 外径 73 mm / 内径 62 mm / 长度 6 m / 落底或未知」；<b>二</b>，落物状态常常不确定（是否落底、是否被砂埋），这时不能只给一个答案，而要给出「首选 + 备选 + 需要先探底」的作业顺序；<b>三</b>，历史成功率要按井型分档统计，把 40° 井斜的成功率混进平均值里会误导推荐。</p><p>建议先做一个「离线选型工具」给工程师用：输入落物描述，输出推荐工具与理由，先不改现场流程；跑三个月，把工程师的选择与系统推荐做对比，把差异回写进知识表。这一步做完，命中率通常能到 80% 以上，再谈接入作业系统。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>知识图谱</span><span class='ref'>规则匹配与打分</span><span class='ref'>文本信息抽取</span><span class='ref'>相似度检索</span></div><div class='callout'><span class='ci'>说明</span><span>这个案例里「智能化」的表现形式很朴素：<b>可解释的加权评分 + 一份整理干净的知识表</b>。它的价值不在算法新不新，而在把一段只存在于老师傅脑子里的判断逻辑，变成了新员工第一天就能用的工具。</span></div>"
+        }
+      ]
+    },
+    "workflow": {
+      "label": "案例流程",
+      "title": "从工具手册到选型工具：一个区块 640 例打捞记录的整理过程",
+      "lead": [
+        "起点是一本 60 页的打捞工具手册和一堆散落的打捞记录，终点是一个输入落物描述、输出推荐工具与作业顺序的小工具。",
+        "整个过程没有用深度学习，用的是知识表 + 加权评分；验收标准很硬：把工程师的选择当成参考答案，看工具能不能复现。"
+      ],
+      "stats": [
+        [
+          "打捞记录",
+          "640 例"
+        ],
+        [
+          "打捞工具 / 工序工具",
+          "11 / 2"
+        ],
+        [
+          "Top-1 命中",
+          "81%"
+        ],
+        [
+          "示范默认起下钻",
+          "1 趟"
+        ]
+      ],
+      "steps": [
+        {
+          "name": "落物描述结构化",
+          "role": "数据",
+          "do": "把 640 条打捞记录里的落物描述拆成 8 个字段：形态类别（管状 / 杆状 / 柔索 / 实心小件 / 工具）、外径、内径、长度、材质、是否落底、是否能循环洗井、卡阻状态。",
+          "effect": "得到 640 条可计算的输入样本，其中 92% 能完整填满 8 个字段。",
+          "trap": "「落底」这个字段现场经常没写。默认填「是」是最危险的捷径——悬空落物的推荐结果完全不同，必须回查井史或标记为「未知」，并同时保留落底 / 悬空两个分支；对外部套入式工具，还要先核对「可捞上限 &lt; 内孔 &lt; 外径」。"
+        },
+        {
+          "name": "工具知识表建模",
+          "role": "知识工程",
+          "do": "把手册里每件工具写成一条记录：适用形态及权重、工具外径、内孔、可捞落物外径或内径区间、最小咬合长度 / 最大容纳长度、允许最大井斜、是否需循环、是否需落底、历史成功率（按井型分档）、备注（如「需先磨铣」）。",
+          "effect": "11 条打捞工具 + 2 条工序工具（套铣筒、平底磨鞋），就是选型算法的全部知识来源。",
+          "trap": "手册里的「适用范围」通常是定性描述（「适用于管类落物」），必须转化为可比较的数值区间与权重；公锥 / 捞矛按落物内径、母锥 / 卡瓦筒按落物外径，不能共用一个区间。"
+        },
+        {
+          "name": "硬约束筛选",
+          "role": "算法",
+          "do": "按物理可行性剔除选项：工具外径 + 单边 6 mm 间隙必须小于套管内通径；落物外径 / 内径必须落在工具可捞区间；磁力打捞器只对铁磁性材料生效；井斜不得超过工具允许值；需循环的工具必须有循环条件；需落底的工具不能用于悬空落物；落物长度不得小于最小咬合长度、也不得超过工具可容纳长度。",
+          "effect": "候选从 11 项压到 0—5 项，且排除了所有「不可能成功」的方案；不可用项直接标「不可用」，不进入推荐。",
+          "trap": "环空间隙与通径要求被忽略会导致工具卡在落物上方或根本下不去——这类错误在算法里看不出来，必须来自工具工程师的确认值；用套管外径代替通径是最常见的口径错误。"
+        },
+        {
+          "name": "软评分与作业顺序推荐",
+          "role": "算法核心",
+          "do": "对剩余候选按 形态 0.32 / 尺寸 0.26 / 井斜 0.16 / 历史成功率 0.16 / 工况条件 0.10 加权打分，排序后输出「首选 + 备选」，并对需要先磨铣、先探底或落物卡阻的组合给出作业顺序与工具串（打捞工具 + 震击器 + 安全接头）。",
+          "effect": "输出首选 + 备选、综合匹配度与分项理由；推荐结果可在 30 秒内说清依据。",
+          "trap": "权重需要按区块标定：老井井斜大、套管有变形时，井斜项的权重应上调，否则推荐会偏向在直井里好用的工具。"
+        },
+        {
+          "name": "现场验证与知识表回写",
+          "role": "人工",
+          "do": "工程师按推荐下工具，记录实际起下钻次数与结果；每月把「工程师改选」的案例拿出来复盘，修正形态适用度矩阵与成功率。",
+          "effect": "Top-1 命中率从上线时的 68% 提升到 81%，示范默认起下钻 1 趟。",
+          "trap": "只统计成功率、不统计「为什么改选」，知识表永远不会变准。每次改选都要记一句话原因。"
+        }
+      ],
+      "metrics": {
+        "title": "怎么算“做对了”",
+        "html": "<p>这个场景的评价指标要和「钱」挂钩，否则看不出价值：</p><table class='dtable'><thead><tr><th>指标</th><th>定义</th><th>本案例取值</th></tr></thead><tbody><tr><td>Top-1 命中率</td><td>工程师最终使用的工具即系统首选的比例</td><td>81%</td></tr><tr><td>平均起下钻次数</td><td>单井次打捞作业的起下钻趟数期望</td><td>示范默认 1 趟（原 2—3 趟）</td></tr><tr><td>首选未命中后果</td><td>首选失败时的平均额外工期</td><td>+1.6 天</td></tr><tr><td>危险推荐率</td><td>推荐方案中出现物理不可行项的比例</td><td>0%（硬约束拦截）</td></tr></tbody></table><p>注意最后一行：<b>危险推荐率必须是 0</b>。落物打捞是井下作业，一个「外径超限」的推荐可能直接把工具卡在井里，代价远大于少省一天工期。所以硬约束不能进模型，只能进规则。</p>"
+      },
+      "fails": [
+        {
+          "name": "「落底」状态填错",
+          "why": "悬空落物按落底处理，会推荐需要靠落底收爪的工具（一把抓等），下井后抓空，白跑一趟。"
+        },
+        {
+          "name": "形态描述含糊导致双解",
+          "why": "「电缆带钢丝」既能按柔索类用绳类打捞钩，也可能需要先用篮式捞筒清碎屑，系统必须输出作业顺序而不是单一答案。"
+        },
+        {
+          "name": "成功率未按井型分档",
+          "why": "把 40° 井斜的成功率混算进平均，会让井斜适应性差的工具在大斜度井里被误推荐。"
+        }
+      ]
+    },
+    "demo": {
+      "mode": "auto",
+      "html": "demo/index.html",
+      "js": "demo/demo.js",
+      "label": "可运行示范",
+      "intro": "设定落物形态、外径 / 内径、长度、井斜、落底三态、材质与卡阻状态，看硬约束先排除哪些工具（工具外径 + 单边间隙、可捞区间、材质、井斜、循环、落底、咬合长度），软评分如何给剩下 11 件打捞工具排序；套铣筒与平底磨鞋只作为解卡 / 磨铣工序出现，不参与打捞排序。",
+      "height": 760
+    }
+  }
+}

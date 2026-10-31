@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：STA/LTA 初至波自动拾取</title>
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="panel">
+  <h1>STA/LTA 能量比法拾取初至</h1>
+  <p class="lead">下图是一道合成的地震记录：前段是背景噪声，初至到达后出现一串衰减振动。
+  算法用短时窗能量除以长时窗能量，比值冲过阈值的位置就是拾取的初至。
+  拖动滑杆，看它在什么条件下可靠、什么条件下失灵。</p>
+
+  <div class="ctl">
+    <label>噪声水平 <output id="out-noise">0.8</output></label>
+    <input type="range" id="noise" min="0" max="3" step="0.1" value="0.8">
+  </div>
+  <div class="ctl">
+    <label>触发阈值 <output id="out-th">3.0</output></label>
+    <input type="range" id="th" min="1.2" max="8" step="0.1" value="3">
+  </div>
+
+  <svg id="trace" viewBox="0 0 720 210" role="img" aria-label="地震道与拾取结果"></svg>
+  <svg id="ratio" viewBox="0 0 720 120" role="img" aria-label="STA/LTA 能量比曲线"></svg>
+
+  <div class="readouts">
+    <div class="ro"><span class="k">拾取位置</span><b id="ro-pick">—</b></div>
+    <div class="ro"><span class="k">真实初至</span><b id="ro-true">—</b></div>
+    <div class="ro"><span class="k">误差</span><b id="ro-err">—</b></div>
+    <div class="ro"><span class="k">判定</span><b id="ro-verdict">—</b></div>
+  </div>
+
+  <p class="note" id="note"></p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

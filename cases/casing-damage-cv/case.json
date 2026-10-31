@@ -1,0 +1,155 @@
+{
+  "id": "casing-damage-cv",
+  "sceneId": "wo3",
+  "methods": [
+    "cv"
+  ],
+  "title": "套管损伤智能识别：多臂井径 + 成像",
+  "version": "1.0.0",
+  "updated": "2026-10-23",
+  "status": "ready",
+  "tabs": {
+    "background": {
+      "label": "专业背景",
+      "lede": "套管变形、腐蚀、穿孔会直接破坏井筒完整性——轻则工具下不去，重则层间窜流、井口带压。检测手段是多臂井径仪（16—40 条独立臂测内径）与超声成像，一口井的测井数据有上千个深度点、几十条曲线，解释员要逐段判读并在 2000 m 里挑出十几处异常。本案例用统计特征 + 阈值把「逐段看」变成「按异常排序看」。",
+      "judge": [
+        {
+          "label": "任务类型",
+          "value": "曲线异常检测 + 分级",
+          "desc": "在深度轴上做分段与分类"
+        },
+        {
+          "label": "数据门槛",
+          "value": "500—2000 段标注",
+          "desc": "损伤段的位置、类型、等级"
+        },
+        {
+          "label": "可见收益",
+          "value": "8 h → 20 min",
+          "desc": "单井判读工时"
+        },
+        {
+          "label": "难度",
+          "value": "中",
+          "desc": "轻微变形与正常椭圆度边界模糊",
+          "html": "<span class='dtag' data-d='中'>难度 中</span>"
+        }
+      ],
+      "sections": [
+        {
+          "no": 1,
+          "en": "PROBLEM",
+          "title": "当前做法与问题",
+          "html": "<p>多臂井径仪把每一支臂测到的内径记成一条曲线，16 臂就是 16 条曲线叠在同一个深度轴上；超声成像则把井壁展开成一张灰度图。四种典型损伤的「指纹」方向不同：<b>挤压变形</b>是两侧对称内缩、椭圆度上升；<b>腐蚀减薄</b>是内壁金属损失，局部扇区的内径<b>变大</b>（成像上偏亮）；<b>穿孔</b>是 1—2 支臂在 0.3—0.5 m 窄段突然<b>向外弹开</b>；<b>错断</b>则是井筒中心横向偏移——一侧内径变大、对侧变小，平均内径不一定变化。</p><p>问题在于<b>要看的东西太多、异常太少</b>：一口井 2000 m、上万个深度点，真正有价值的异常可能只有十几处，解释员要花 6—8 小时逐段比对；而且「轻微挤压」与「正常椭圆度」的边界模糊，不同解释员在同一段上给出的等级常常不一致。</p>"
+        },
+        {
+          "no": 2,
+          "en": "INTERVENTION",
+          "title": "AI 能做什么",
+          "html": "<p>把「逐段看」拆成三步可计算的动作：<b>① 特征化</b>——每个深度点算平均内径 D̄、最小内径 Dmin、椭圆度 E=(Dmax−Dmin)/D̄ 与各臂相对名义内径的偏差；<b>② 检测</b>——用「相对名义内径的最大偏差」（内缩、外扩、椭圆度等效偏移、中心偏移取大）作为损伤指标，超过阈值且持续超过最小长度的深度段标为候选损伤段；<b>③ 分类分级</b>——按特征形态把候选段分成挤压 / 腐蚀 / 穿孔 / 错断，再按壁厚损失率、椭圆度或中心偏移定轻 / 中 / 重三级。</p><p>超声成像在这里的角色是<b>交叉验证</b>：成像图上异常处的灰度（回波幅度）同样会变化，两条独立证据同时命中的段，可信度最高。人只复核高分候选与两证据不一致的段。</p><div class='figure'><svg viewBox='0 0 660 208' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='特征定义与算法流程'><text x='14' y='18' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>① 每个深度点算三个特征</text><g><circle cx='72' cy='96' r='46' fill='#fdfcf9' stroke='#d3c9b6'/><ellipse cx='72' cy='96' rx='40' ry='30' fill='none' stroke='#1d4e50' stroke-width='1.4' stroke-dasharray='4 3'/><line x1='72' y1='96' x2='112' y2='96' stroke='#1d4e50'/><line x1='72' y1='96' x2='72' y2='66' stroke='#a9742c'/><text x='94' y='92' font-size='9' fill='#123a3d'>Dmax</text><text x='60' y='76' font-size='9' fill='#83551f'>Dmin</text><text x='72' y='158' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>井筒截面</text></g><g font-size='10' fill='#4a585c'><text x='146' y='68'>D̄ = 各臂内径平均</text><text x='146' y='90'>E = (Dmax − Dmin) / D̄</text><text x='146' y='112'>Δ = 名义内径 − Dmin</text><text x='146' y='140' fill='#99a3a4' font-size='9.5'>Δ 作为损伤指标，E 与臂数分布用于定性</text></g><path d='M320 100 L346 100' stroke='#d3c9b6' stroke-width='1.4'/><path d='M340 95 L348 100 L340 105 Z' fill='#d3c9b6'/><g><rect x='356' y='30' width='88' height='34' rx='6' fill='#e7eee9' stroke='#c8dbd2'/><text x='400' y='51' font-size='10' fill='#123a3d' text-anchor='middle'>阈值 + 持续长度</text><rect x='356' y='76' width='88' height='34' rx='6' fill='#e7eee9' stroke='#c8dbd2'/><text x='400' y='97' font-size='10' fill='#123a3d' text-anchor='middle'>形态分类</text><rect x='356' y='122' width='88' height='34' rx='6' fill='#e7eee9' stroke='#c8dbd2'/><text x='400' y='143' font-size='10' fill='#123a3d' text-anchor='middle'>峰值分级</text></g><path d='M452 100 L478 100' stroke='#d3c9b6' stroke-width='1.4'/><path d='M472 95 L480 100 L472 105 Z' fill='#d3c9b6'/><g><rect x='488' y='40' width='158' height='110' rx='8' fill='#faf7f0' stroke='#c8d9d1'/><text x='567' y='60' font-size='10' fill='#123a3d' text-anchor='middle'>损伤清单</text><line x1='502' y1='72' x2='632' y2='72' stroke='#d7e3dd'/><line x1='502' y1='94' x2='632' y2='94' stroke='#d7e3dd'/><line x1='502' y1='116' x2='632' y2='116' stroke='#d7e3dd'/><line x1='502' y1='138' x2='632' y2='138' stroke='#d7e3dd'/><text x='504' y='86' font-size='9' fill='#4a585c'>780—836 m 挤压 中度</text><text x='504' y='108' font-size='9' fill='#4a585c'>318—340 m 腐蚀 轻度</text><text x='504' y='130' font-size='9' fill='#4a585c'>1186—1196 m 穿孔 重度</text></g><text x='14' y='196' font-size='9.5' fill='#99a3a4'>输出不是「有没有损伤」，而是一张按严重程度排序的清单——人的注意力应该花在清单前面几行</text></svg></div><div class='figcap'><b>图 2</b><span>三个特征里只有 Δ（最大内缩量）是必须的，另两个用来<b>定性</b>：椭圆度高且各臂同缩 → 挤压；只有少数几臂变化 → 腐蚀或穿孔；平均内径出现台阶 → 错断。</span></div>"
+        },
+        {
+          "no": 3,
+          "en": "DATA",
+          "title": "你需要准备什么",
+          "html": "<p>多臂井径的数据量不大（一口井几百 KB），但<b>名义内径与深度校正</b>这两件事必须先做对，否则所有阈值都会偏。标注是这项工作最贵的一环：请解释员把历史上已经作业验证过的损伤段（铅印、复测、取换套管）整理成标注集，正样本少，负样本（正常井段）可以大量采样。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 5 项</span><span class='cl-prog'><span id='cl-txt'>0 / 5</span><span class='cl-bar'><i id='cl-fill'></i></span></span></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>多臂井径数据</span><span class='cl-s'>16—40 臂，0.05—0.1 m 采样，全井段</span></span><span class='cl-n'>单井 1—2 万点</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>超声成像（IBI/USI）</span><span class='cl-s'>展开灰度图，与井径同深度基准</span></span><span class='cl-n'>交叉验证证据</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>损伤段标注</span><span class='cl-s'>位置、类型、等级（轻/中/重）</span></span><span class='cl-n'>500—2000 段，需双人标注</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>名义内径与钢级</span><span class='cl-s'>套管规格、壁厚、下入深度</span></span><span class='cl-n'>阈值基准，必须准确</span></div><div class='cl-item' data-cl='4'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>作业验证记录</span><span class='cl-s'>铅印、井径复测、修井中实际发现</span></span><span class='cl-n'>真值，用于定标与评测</span></div></div>"
+        },
+        {
+          "no": 4,
+          "en": "DIFFICULTY",
+          "title": "技术难度与参考方向",
+          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='中'>难度 中</span><span class='small muted'>方法不难，难点在标注质量与分级标准</span></div><div class='meter'><i class='on'></i><i class='on'></i></div><p>算法本身是「特征 + 阈值 + 分类」，一个人两周能跑通。真正的坑有三处：<b>一</b>，损伤样本稀少且不均衡——正常井段占 99% 以上，任何把「准确率」当主指标的做法都会得到 99% 的假象，必须用<b>召回率 + 每井误报段数</b>评价；<b>二</b>，分级边界主观——「中度变形」与「重度变形」的界线因人而异，要用双人标注一致性（Kappa 系数）作为天花板，做到人的一致率就够了；<b>三</b>，名义内径不准会让整条曲线平移，所有阈值失效，必须用套管记录校准。</p><p>建议路线：先用<b>统计特征 + 阈值</b>把候选段列出来（这一步就能省掉 80% 的判读时间），把解释员的反馈收集成标注；第二步再把成像图接进来做二维分割，用「两证据一致」来压制误报；最后才考虑端到端的深度网络——它在数据量不足时不如规则透明可靠。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>语义分割</span><span class='ref'>曲线异常检测</span><span class='ref'>曲线与图像融合</span><span class='ref'>分级分类与一致性评估</span></div><div class='callout warn'><span class='ci'>注意</span><span>输出必须带<b>位置与证据</b>：解释员要看的是「1186—1196 m，2 臂出现 6 mm 尖峰，成像对应该段灰度突变」。只给一个「疑似穿孔」的标签而不给证据，这个工具在现场不会被使用。</span></div>"
+        }
+      ]
+    },
+    "workflow": {
+      "label": "案例流程",
+      "title": "某油田 620 井次套损检测数据的判读流程改造",
+      "lead": [
+        "改造前的状态：解释员打开测井图，从上到下看 2000 m，把可疑段记在纸上，再回翻成像图确认，单井 6—8 小时。",
+        "改造后：算法先把候选损伤段按严重程度排成清单，解释员从清单第一行开始核对，单井 20 分钟，且每一段都有可复核的数值依据。"
+      ],
+      "stats": [
+        [
+          "检测井次",
+          "620"
+        ],
+        [
+          "标注损伤段",
+          "1840"
+        ],
+        [
+          "召回率",
+          "96%"
+        ],
+        [
+          "单井误报",
+          "2.3 段"
+        ]
+      ],
+      "steps": [
+        {
+          "name": "深度校正与名义内径标定",
+          "role": "数据",
+          "do": "把井径与成像的深度基准对齐（误差 &lt; 0.2 m），按套管记录设定名义内径与壁厚；剔除仪器偏心引起的整体偏移。",
+          "effect": "所有深度点的偏差量都能用同一个名义内径基准计算。",
+          "trap": "名义内径差 1 mm，整条曲线的偏差量就整体平移 1 mm，阈值全废。必须用井口实测或接箍段反算校准。"
+        },
+        {
+          "name": "特征提取",
+          "role": "算法",
+          "do": "逐点算 D̄、Dmin、Dmax、椭圆度 E、各臂偏差，并做 3—5 点滑动平均抑制单点噪声。",
+          "effect": "一口井 2 万个深度点变成 5 条特征曲线，可直接做阈值判断。",
+          "trap": "不做平滑会把仪器噪声当成穿孔；平滑窗过长会把 0.5 m 的真实穿孔抹平——窗长要按仪器采样率定。"
+        },
+        {
+          "name": "候选段检测与形态分类",
+          "role": "算法核心",
+          "do": "以内缩、外扩、椭圆度等效偏移与中心偏移的最大值作为损伤指标，超阈值且持续 ≥0.3 m 的深度段作为候选；按受影响臂数、深度宽度、内外偏差方向与中心偏移分类为挤压 / 腐蚀 / 穿孔 / 错断。",
+          "effect": "输出带类型的候选段清单，平均单井 12—18 段。",
+          "trap": "不同类型的最小持续长度不同：穿孔宽度可以只有 0.3 m，若统一用 0.5 m 会整类漏检，必须分类型设门限。"
+        },
+        {
+          "name": "分级与交叉验证",
+          "role": "算法",
+          "do": "按峰值偏差与段长把候选分为轻 / 中 / 重：腐蚀与穿孔按壁厚损失率（<20% / 20—50% / >50%），挤压按椭圆度（<3% / 3—8% / >8%），错断按中心偏移；把超声成像同深度的灰度异常作为第二证据，两证据一致则提级，仅井径异常则降级并标注「待复核」。",
+          "effect": "清单顶部 3—5 段即为高置信度重度损伤，与实际作业验证吻合率 91%。",
+          "trap": "不要用（井径异常 OR 成像异常）的宽松逻辑，那会把成像噪声全放进来；现场需要的是低误报。"
+        },
+        {
+          "name": "人工复核与标注回写",
+          "role": "人工",
+          "do": "解释员逐条确认清单，改类型/改等级/删除误报，全部操作留痕；每月把这些修正合并进标注集，重新标定阈值。",
+          "effect": "召回率保持 96% 的同时，单井误报从 5.8 段降到 2.3 段。",
+          "trap": "删掉的误报同样是宝贵数据——不记录「为什么删」，阈值就永远调不准。"
+        }
+      ],
+      "metrics": {
+        "title": "怎么算“做对了”",
+        "html": "<p style='font-size:12px;color:#6c7872;line-height:1.7;margin-bottom:10px'>下表为现场 620 井次、人工复评口径；可运行示范是 2000 m 合成单井（0.1 m 采样），默认 4/4 类型全对、0 误报、复核工时 17 min，属于示范口径。</p><p>这是典型的<b>极度不均衡检测</b>，指标必须成对看：</p><table class='dtable'><thead><tr><th>指标</th><th>定义</th><th>本案例取值</th></tr></thead><tbody><tr><td>召回率</td><td>真实损伤段中被检出的比例（允许位置偏差 ≤ 1 m）</td><td>96%</td></tr><tr><td>单井误报段数</td><td>每口井平均需要人工排除的假候选</td><td>2.3 段</td></tr><tr><td>分级一致率</td><td>与解释员复评等级一致的比例（±1 级内不计错）</td><td>89%</td></tr><tr><td>判读工时</td><td>单井从数据到清单确认的中位时间</td><td>20 min</td></tr></tbody></table><p>为什么不说「准确率」？因为损伤段占全井段不到 1%，一个「全都判正常」的模型准确率就超过 99%，却毫无用处。<b>召回率决定不漏，误报数决定人愿不愿意用</b>——两个指标一起看，才是这个场景的正确口径。</p>"
+      },
+      "fails": [
+        {
+          "name": "仪器偏心被当成椭圆度",
+          "why": "仪器不居中会让内径剖面出现周期性椭圆，与真实挤压变形特征相似；需要先做偏心校正，或把「各臂同向」作为额外判据。"
+        },
+        {
+          "name": "接箍段误报",
+          "why": "接箍处内径本来就有台阶变化，会被错断类识别命中；需要把接箍深度表作为已知干扰排除。"
+        },
+        {
+          "name": "腐蚀与穿孔混淆",
+          "why": "窄而深的腐蚀坑与穿孔的井径特征接近，靠井径无法区分，必须借成像灰度与深度宽度联合判断。"
+        }
+      ]
+    },
+    "demo": {
+      "mode": "auto",
+      "html": "demo/index.html",
+      "js": "demo/demo.js",
+      "label": "可运行示范",
+      "intro": "切换损伤类型与严重程度，看 16 臂井径曲线与展开成像图上的异常指纹，以及分层阈值如何把候选损伤段检出来并分级；鼠标在深度轴上点一下，可以看该深度的井筒截面。",
+      "height": 820
+    }
+  }
+}

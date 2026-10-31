@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>石油智能可视化图鉴</title>
+<meta name="description" content="以图形直观呈现石油作业链上可被智能改造的候选场景：一图看懂技术介入点、数据条件与难度等级；带可运行的案例示范。">
+<meta name="theme-color" content="#060f12">
+<link rel="icon" type="image/svg+xml" href="assets/brand/logo.svg">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<script>window.__BUILD__="2026-11-02 v3.0";</script>
+
+<link rel="stylesheet" href="assets/core/tokens.css?v=20261103b">
+<link rel="stylesheet" href="assets/core/layout.css?v=20261103b">
+<link rel="stylesheet" href="assets/core/ui.css?v=20261103b">
+<link rel="stylesheet" href="assets/core/v3.css?v=20261103b">
+<link rel="stylesheet" href="assets/core/explore.css?v=20261103b">
+</head>
+<body>
+
+<button class="skip-link" id="skip-link" type="button">跳到正文</button>
+<script>document.getElementById('skip-link').addEventListener('click',function(){var m=document.querySelector('#view main')||document.getElementById('view');if(m){m.setAttribute('tabindex','-1');m.focus({preventScroll:false});}});</script>
+<div id="route-line" class="route-line"></div>
+<div id="view">
+  <main class="wrap" style="padding:120px 0">
+    <div class="empty"><b>正在加载</b>如果这行字一直不消失，说明脚本没有正确执行，
+    请检查浏览器控制台。</div>
+  </main>
+</div>
+
+<noscript>
+  <div class="wrap" style="padding:80px 0">
+    <div class="empty"><b>需要启用 JavaScript</b>本站是纯前端渲染的，所有页面由本地脚本生成。</div>
+  </div>
+</noscript>
+
+<!-- =========================================================
+     脚本加载顺序（改这里之前先读 docs/如何添加新案例.md）
+     1. data.js         场景元数据
+     2. registry.js     案例注册表
+     3. kit.js          渲染工具箱
+     4. cases/*         案例插件 —— 新增案例加在这一段
+     5. case-demo-host  示范宿主（整页 iframe / 模块 Shadow DOM）
+     6. case-upload     案例包导入（读 localStorage，必须在 shell 前）
+     7. pack-library    案例包库页面（#/packs，导出/试跑）
+     8. fx.js           首页动效（可选，失败不影响任何功能）
+     9. admin.js        管理后台
+    10. shell.js        外壳，必须最后
+     ========================================================= -->
+<script src="assets/data.js?v=20261103b"></script>
+<script src="assets/core/registry.js?v=20261103b"></script>
+<script src="assets/core/kit.js?v=20261103b"></script>
+
+<script src="assets/cases/welllog-layer.case.js?v=20261103b"></script>
+<script src="assets/cases/welllog-layer.demo.js?v=20261103b"></script>
+<!-- ↑ 新案例加在这里：<script src="assets/cases/你的案例.case.js"></script> -->
+
+<!-- CASES:BEGIN （本区块由 tools/build-cases.mjs 生成，勿手改） -->
+<script src="assets/cases/casing-damage-cv.case.js?v=20261103b"></script>
+<script src="assets/cases/fishing-tool-kg.case.js?v=20261103b"></script>
+<script src="assets/cases/frac-optimize-opt.case.js?v=20261103b"></script>
+<script src="assets/cases/gaslogging-fluid-ts.case.js?v=20261103b"></script>
+<script src="assets/cases/pipeline-leak-ts.case.js?v=20261103b"></script>
+<script src="assets/cases/pump-diagnosis-cv.case.js?v=20261103b"></script>
+<script src="assets/cases/workover-duration-ts.case.js?v=20261103b"></script>
+<script src="assets/cases/workover-plan-kg.case.js?v=20261103b"></script>
+<script src="assets/cases/workover-risk-ts.case.js?v=20261103b"></script>
+<!-- CASES:END -->
+
+<!-- 上传的案例包（localStorage）在这里恢复注册，必须在 shell.js 之前 -->
+<script src="assets/core/case-demo-host.js?v=20261103b"></script>
+<script src="assets/core/case-upload.js?v=20261103b"></script>
+
+<script src="assets/vendor/three.min.js?v=20261103b"></script>
+<script src="assets/vendor/GLTFLoader.js?v=20261103b"></script>
+<script src="assets/models/wellpad.glb.js?v=20261103b"></script>
+<script src="assets/core/hero3d.js?v=20261103b"></script>
+<script src="assets/core/pack-library.js?v=20261103b"></script>
+<script src="assets/field/field-data.js?v=20261103b"></script>
+<script src="assets/field/photos.js?v=20261103b"></script>
+<script src="assets/core/plates.js?v=20261103b"></script>
+<script src="assets/core/explore.js?v=20261103b"></script>
+<script src="assets/core/v3.js?v=20261103b"></script>
+<script src="assets/core/fx.js?v=20261103b"></script>
+<script src="assets/core/admin.js?v=20261103b"></script>
+
+<script src="assets/core/shell.js?v=20261103b"></script>
+
+</body>
+</html>

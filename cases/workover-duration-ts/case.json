@@ -1,0 +1,110 @@
+{
+  "id": "workover-duration-ts",
+  "sceneId": "wo5",
+  "methods": ["ts"],
+  "title": "修井周期预测：分位数区间与蒙特卡洛",
+  "version": "1.0.0",
+  "updated": "2026-10-23",
+  "status": "ready",
+  "tabs": {
+    "background": {
+      "label": "专业背景",
+      "lede": "修井工期直接决定产量损失与作业队排班：一口井多停一天，少产几十吨油，影响的是整个区块的月度配产。但工期估计现在是「经验值」——同类作业在不同井上的实际工期可以差一倍，排班与物资准备因此经常失准。本案例把工期拆成工序，用分位数给出区间而不是单点，再蒙特卡洛合成一口井的总工期分布。",
+      "judge": [
+        { "label": "任务类型", "value": "分位数回归 + 蒙特卡洛", "desc": "输出区间与概率，不是单点工期" },
+        { "label": "数据门槛", "value": "1000+ 井次时效记录", "desc": "工序级起止时间" },
+        { "label": "可见收益", "value": "按期率 62% → 70%（P70 口径）", "desc": "排班命中率" },
+        { "label": "难度", "value": "中", "desc": "记录粒度不一致，工序边界需统一", "html": "<span class='dtag' data-d='中'>难度 中</span>" }
+      ],
+      "sections": [
+        {
+          "no": 1,
+          "en": "PROBLEM",
+          "title": "当前做法与问题",
+          "html": "<p>修井工期由一串工序串起来：起原井管柱 → 洗井 → 打捞（或磨铣）→ 通井 → 下泵 → 试压 → 交井。每一道工序的耗时取决于井深、故障复杂度、管柱状况，还受天气、设备、队伍熟练度影响。现在的做法是拿邻井的「总工期」加一点经验余量，结果是：<b>有的井提前完工、队伍闲置；有的井严重超期、产量损失成倍</b>。</p><p>更麻烦的是<b>不确定性无法表达</b>。总工期报了 8 天，没人知道这是「大概率 7—9 天」还是「可能 5 天也可能 15 天」——而排班、车辆调度与配产需要的恰恰是后者。</p><div class='figure'><svg viewBox='0 0 660 200' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='工期构成与不确定性'><text x='14' y='18' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>一口井的工期 = 各工序耗时之和，每一段都有不确定性</text><g font-size='9.5'><text x='14' y='46' fill='#4a585c'>起原井管柱</text><text x='14' y='70' fill='#4a585c'>洗井</text><text x='14' y='94' fill='#4a585c'>打捞 / 磨铣</text><text x='14' y='118' fill='#4a585c'>通井</text><text x='14' y='142' fill='#4a585c'>下泵</text><text x='14' y='166' fill='#4a585c'>试压 / 交井</text></g><g><rect x='120' y='36' width='86' height='14' rx='3' fill='#1d4e50' opacity='.85'/><rect x='206' y='36' width='26' height='14' rx='3' fill='#1d4e50' opacity='.25'/><rect x='120' y='60' width='34' height='14' rx='3' fill='#1d4e50' opacity='.85'/><rect x='154' y='60' width='14' height='14' rx='3' fill='#1d4e50' opacity='.25'/><rect x='120' y='84' width='150' height='14' rx='3' fill='#1d4e50' opacity='.85'/><rect x='270' y='84' width='92' height='14' rx='3' fill='#1d4e50' opacity='.25'/><rect x='120' y='108' width='60' height='14' rx='3' fill='#1d4e50' opacity='.85'/><rect x='180' y='108' width='30' height='14' rx='3' fill='#1d4e50' opacity='.25'/><rect x='120' y='132' width='70' height='14' rx='3' fill='#1d4e50' opacity='.85'/><rect x='190' y='132' width='20' height='14' rx='3' fill='#1d4e50' opacity='.25'/><rect x='120' y='156' width='30' height='14' rx='3' fill='#1d4e50' opacity='.85'/><rect x='150' y='156' width='16' height='14' rx='3' fill='#1d4e50' opacity='.25'/></g><text x='420' y='60' font-size='10' fill='#123a3d'>深色 = 50% 分位（最可能的耗时）</text><text x='420' y='80' font-size='10' fill='#6f7a7c'>浅色 = 上分位区间（保守估计）</text><text x='420' y='112' font-size='10' fill='#83551f'>打捞 / 磨铣 段最宽：</text><text x='420' y='130' font-size='10' fill='#83551f'>它决定总工期的不确定性</text><text x='420' y='160' font-size='10' fill='#a64b3c'>经验法把这一段当成固定值，</text><text x='420' y='178' font-size='10' fill='#a64b3c'>于是总工期必然是错的</text></svg></div><div class='figcap'><b>图 1</b><span>注意「打捞 / 磨铣」这一段的区间宽度：它的不确定性远大于其他工序，因此它是<b>最不确定工序</b>（方差贡献最大）——把资源投在缩短它的不确定性上，比把每道工序都估准更有效。</span></div>"
+        },
+        {
+          "no": 2,
+          "en": "INTERVENTION",
+          "title": "AI 能做什么",
+          "html": "<p>三步走，每一步都很寻常但组合起来能解决问题：<b>① 工序分解</b>——把历史时效记录按标准工序切成段，得到「井深 + 故障类型 + 是否磨铣」条件下的工序耗时样本；<b>② 分位数回归</b>——对每道工序分别拟合 P10 / P50 / P90 三条曲线（而不是一个均值），这样输出天然带不确定性；<b>③ 蒙特卡洛合成</b>——按工序依赖顺序抽 2000 次样本相加，得到总工期的分布，从中读出 P50、P90 与「在给定计划工期前完工的概率」。</p><p>和「预测一个总工期数字」相比，这套做法的价值在于：<b>能回答排班真正关心的问题</b>——「按 8 天报计划，按期完工的概率是多少？」</p><div class='figure'><svg viewBox='0 0 660 210' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='分位数回归与蒙特卡洛流程'><g><rect x='14' y='30' width='132' height='76' rx='8' fill='#fdfcf9' stroke='#e3dccd'/><text x='80' y='50' font-size='10' fill='#4a585c' text-anchor='middle'>历史时效记录</text><text x='80' y='70' font-size='9' fill='#99a3a4' text-anchor='middle'>工序起止时间</text><text x='80' y='88' font-size='9' fill='#99a3a4' text-anchor='middle'>单区块 1000+ 井次</text></g><path d='M152 68 L172 68' stroke='#d3c9b6' stroke-width='1.4'/><path d='M166 63 L174 68 L166 73 Z' fill='#d3c9b6'/><g><rect x='180' y='30' width='132' height='76' rx='8' fill='#fdfcf9' stroke='#e3dccd'/><text x='246' y='50' font-size='10' fill='#4a585c' text-anchor='middle'>工序样本</text><text x='246' y='70' font-size='9' fill='#99a3a4' text-anchor='middle'>井深 / 故障类型 / 磨铣</text><text x='246' y='88' font-size='9' fill='#99a3a4' text-anchor='middle'>→ 该工序耗时分布</text></g><path d='M318 68 L338 68' stroke='#d3c9b6' stroke-width='1.4'/><path d='M332 63 L340 68 L332 73 Z' fill='#d3c9b6'/><g><rect x='346' y='30' width='132' height='76' rx='8' fill='#e7eee9' stroke='#c8dbd2'/><text x='412' y='50' font-size='10' fill='#123a3d' text-anchor='middle'>分位数回归</text><text x='412' y='70' font-size='9' fill='#5f7d72' text-anchor='middle'>P10 / P50 / P90</text><text x='412' y='88' font-size='9' fill='#5f7d72' text-anchor='middle'>每道工序一组区间</text></g><path d='M484 68 L504 68' stroke='#d3c9b6' stroke-width='1.4'/><path d='M498 63 L506 68 L498 73 Z' fill='#d3c9b6'/><g><rect x='512' y='30' width='134' height='76' rx='8' fill='#e7eee9' stroke='#c8dbd2'/><text x='579' y='50' font-size='10' fill='#123a3d' text-anchor='middle'>蒙特卡洛合成</text><text x='579' y='70' font-size='9' fill='#5f7d72' text-anchor='middle'>抽 2000 次相加</text><text x='579' y='88' font-size='9' fill='#5f7d72' text-anchor='middle'>→ 总工期分布</text></g><g><text x='14' y='146' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>输出：总工期分布 + 按期完工概率</text><text x='14' y='172' font-size='10.5' fill='#4a585c'>P10 = 7.6 天　P50 = 10.3 天　P90 = 14.9 天</text><text x='14' y='194' font-size='10.5' fill='#123a3d'>若计划工期 10 天 → 按期完工概率 44%　若计划 12 天 → 71%</text></g></svg></div><div class='figcap'><b>图 2</b><span>分位数回归与均值回归的区别只在损失函数：均值最小化平方误差，P90 最小化「低估的代价」。对工期这种<b>押错方向代价不对称</b>的问题，分位数比均值合适得多。</span></div>"
+        },
+        {
+          "no": 3,
+          "en": "DATA",
+          "title": "你需要准备什么",
+          "html": "<p>数据都在作业管理系统里，难点是<b>工序口径统一</b>：不同队伍对「洗井」的起止时间定义不同，有的把循环算进去、有的不算。这一步不统一，后面所有分位数都会失真。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 4 项</span><span class='cl-prog'><span id='cl-txt'>0 / 4</span><span class='cl-bar'><i id='cl-fill'></i></span></span></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>修井时效记录</span><span class='cl-s'>工序名称、起止时间、作业队</span></span><span class='cl-n'>1000+ 井次</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>井况特征</span><span class='cl-s'>井深、井斜、管柱规格、故障类型</span></span><span class='cl-n'>作为回归自变量</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>工序规范</span><span class='cl-s'>每道工序的标准定义与包含范围</span></span><span class='cl-n'>口径统一的前提</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>队伍与设备台账</span><span class='cl-s'>作业队、修井机型号、班制</span></span><span class='cl-n'>解释组间差异</span></div></div>"
+        },
+        {
+          "no": 4,
+          "en": "DIFFICULTY",
+          "title": "技术难度与参考方向",
+          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='中'>难度 中</span><span class='small muted'>方法成熟，卡点在数据口径与验收方式</span></div><div class='meter'><i class='on'></i><i class='on'></i></div><p>技术上不难：分位数回归用梯度提升或线性分位数回归都能实现，蒙特卡洛只是相加。真正要做对的是三件事：<b>一</b>，工序口径统一（否则分位数没有意义）；<b>二</b>，分组建模——不同作业队、不同修井机的能力差异很大，混在一起建模会让区间被撑得没有信息量；<b>三</b>，验收指标要选对：<b>不能用 MAE</b>（平均误差）衡量，而要用「P50 的绝对误差」+「P10—P90 区间的覆盖率」（区间应该覆盖约 80% 的实际值）。</p><p>建议先只做「一口井一个区间」，不要急着做实时预测：把区间覆盖率做到 75%—85% 之间（接近名义的 80%），现场就会开始信它。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>分位数回归</span><span class='ref'>生存分析</span><span class='ref'>蒙特卡洛模拟</span><span class='ref'>区间覆盖率评估</span></div><div class='callout'><span class='ci'>说明</span><span>这个场景很适合作为「不确定性建模」的入门案例：<b>把预测目标从点变成分布</b>，是整个石油行业智能化的一个共同升级方向——产量预测要区间、储量估算要区间、工期当然也要区间。</span></div>"
+        }
+      ]
+    },
+    "workflow": {
+      "label": "案例流程",
+      "title": "某修井公司 1450 井次时效数据的工期预测",
+      "lead": [
+        "改造前：调度按经验值排班，按期率 62%（即三成以上的井超出计划工期）。",
+        "改造后：每口井给出工序级区间 + 总工期分布，调度可以按「计划工期 10 天 → 按期概率 44%」这样的口径做决策；按 P70 = 11.9 天排计划时覆盖约 70%。"
+      ],
+      "stats": [["时效记录", "1450 井次"], ["工序数", "7"], ["按期率", "62% → 70%（P70）"], ["区间覆盖率", "81%"]],
+      "steps": [
+        {
+          "name": "工序口径统一与切分",
+          "role": "数据",
+          "do": "按规范把每井次记录切成 7 道标准工序，剔除记录缺失与工序顺序异常的井次；对「洗井是否含循环」「打捞是否含磨铣」这类边界给出统一定义并回溯修正历史数据。",
+          "effect": "得到 1450 井次 × 7 工序的耗时样本表，可用率 91%。",
+          "trap": "口径不统一时，同一道工序的耗时分布会出现双峰——这通常不是真实差异，而是两队对边界理解不同，必须回头改数据而不是改模型。"
+        },
+        {
+          "name": "特征与分组",
+          "role": "特征工程",
+          "do": "特征取井深、井斜、故障类型、是否需磨铣、管柱规格、作业队与设备型号；先按作业队分组检查分布差异，差异显著的分组建模或加入分组特征。",
+          "effect": "模型能解释「为什么同样的故障，A 队要 6 天而 B 队要 9 天」。",
+          "trap": "把作业队当特征直接进模型会让预测对人员变动过于敏感，更好的做法是只用它做分组或校准。"
+        },
+        {
+          "name": "工序级分位数回归",
+          "role": "算法核心",
+          "do": "对每道工序分别拟合 P10 / P50 / P90 三个分位（梯度提升分位数回归），输入井况特征，输出该工序的耗时区间；用留出的 20% 井次做覆盖率检查。",
+          "effect": "7 道工序 × 3 个分位 = 21 条预测曲线，工序级区间覆盖率 79%（接近名义 80%）。",
+          "trap": "分位数交叉（P10 > P50）在小样本工序上很常见，需要按分位顺序做单调性约束（isotonic 后处理）。"
+        },
+        {
+          "name": "蒙特卡洛合成总工期",
+          "role": "算法",
+          "do": "按工序依赖顺序抽 2000 组样本相加（同一井次内工序间可设置相关性，如磨铣耗时与打捞耗时正相关），得到总工期分布，读出分位数与按期完工概率。",
+          "effect": "输出 P10 / P50 / P90 与「计划工期 → 按期概率」对照表。",
+          "trap": "忽略工序间相关性会低估总工期方差：磨铣拖长的井，打捞通常也会拖长，独立抽样会让区间过窄。"
+        },
+        {
+          "name": "排班联动与误差复盘",
+          "role": "人工",
+          "do": "调度按区间排班：把高不确定性的井（区间宽）排在队里资源充足的时段；每月统计实际工期落在区间内的比例与方差贡献最大的工序，更新模型。",
+          "effect": "按 P70 排计划覆盖约 70%，队伍闲置时间下降 21%，方差贡献最大的工序（打捞 / 磨铣）被识别出来并单独优化。",
+          "trap": "只用实际值落在区间外的井来复盘是不够的，还要看「区间宽度是否随着数据积累在收窄」——那才是模型真的在进步的证据。"
+        }
+      ],
+      "metrics": {
+        "title": "怎么算“做对了”",
+        "html": "<p>工期预测的指标和一般回归不一样：<b>不要用平均误差</b>，要看区间与概率。</p><table class='dtable'><thead><tr><th>指标</th><th>定义</th><th>本案例取值</th></tr></thead><tbody><tr><td>P50 绝对误差</td><td>中位预测与实际工期的差（天）的中位数</td><td>0.8 天</td></tr><tr><td>区间覆盖率</td><td>实际工期落在 P10—P90 之间的比例</td><td>81%（名义 80%）</td></tr><tr><td>区间宽度</td><td>本示范默认井况的 P10—P90 跨度</td><td>7.3 天</td></tr><tr><td>按期率</td><td>按预测 P70 排计划时的实际覆盖比例（P70 = 11.9 天）</td><td>70%</td></tr></tbody></table><p>本示范默认井况（井深 2400 m、落物打捞、需磨铣与压井、计划 10 天）可复现：P10 / P50 / P90 = 7.6 / 10.3 / 14.9 天，计划 10 天的按期概率 44%，计划 12 天为 71%。表中 P50 绝对误差与覆盖率来自现场验收，区间宽度与 P70 为示范默认井复现值。</p><p>覆盖率与宽度必须成对看：把区间拉宽到 20 天，覆盖率能到 99%，但那样的预测对排班毫无用处。<b>「覆盖 80% 且宽度尽量窄」才是目标</b>。</p>"
+      },
+      "fails": [
+        { "name": "工序口径不统一", "why": "同一道工序在不同队伍的记录里起止点不同，会把分布撑成双峰，模型学到的其实是「队伍习惯」而不是「工期规律」。" },
+        { "name": "忽略工序间相关性", "why": "独立抽样会让总工期区间过窄，覆盖率跌到 60% 以下；工序耗时之间存在明显的共同因素（地层、队伍、设备）。" },
+        { "name": "把队伍直接当特征", "why": "人员与设备会变动，模型会随台账变化突然失准；更稳的做法是分组建模或只用来做后校准。" }
+      ]
+    },
+    "demo": {
+      "mode": "auto",
+      "html": "demo/index.html",
+      "js": "demo/demo.js",
+      "label": "可运行示范",
+      "intro": "设定井深、故障类型与作业复杂度，看 7 道工序的分位数区间、蒙特卡洛合成的总工期分布，以及「计划工期 → 按期完工概率」的对照；拖动计划工期滑杆，看按期率怎么随承诺时间变化。",
+      "height": 800
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+ "welllog-layer": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Wireline well-log chart: four vertical track columns of colorful wiggling log curves in teal, brass, ochre and slate, crossed by bold horizontal stratigraphic boundary lines dividing eight stacked layer bands; a slim depth track on the left, a narrow wellbore strip with alternating shaded beds on the right.",
+  "task_id": "task_k3oYJxsEZv8IJWkxeqzqPEOphWmKjgi2",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_k3oYJxsEZv8IJWkxeqzqPEOphWmKjgi2/output_f521ea98deeb4f08946611d426b8026c.png",
+  "generated_at": "2026-10-30 20:40:11"
+ },
+ "casing-damage-cv": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Casing-inspection diagram: a circular multi-arm caliper cross-section with sixteen thin measuring arms radiating outward on the left, and a long unwrapped casing-imaging strip on the right built from fine scan lines, with two jagged signal-red bands marking damaged intervals.",
+  "task_id": "task_Tbm4j82lQlzd4HBHg9vQgEtjOudSgclO",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_Tbm4j82lQlzd4HBHg9vQgEtjOudSgclO/output_bc0bc1d161f940e8972207abf4885212.png",
+  "generated_at": "2026-10-30 20:40:38"
+ },
+ "fishing-tool-kg": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Fishing-tool selection matrix: a four-by-three grid of distinct dark steel downhole-tool silhouettes (overshots, taper taps, spears, mills) on paper cards, exactly one card highlighted with a brass frame and a check mark, thin connector lines linking the grid to a small wellbore icon with a stuck fish shape.",
+  "task_id": "task_WnhfhU2LQsB8tDGQKmLYGKLVz0TpMaWm",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_WnhfhU2LQsB8tDGQKmLYGKLVz0TpMaWm/output_60614fa3634e4c11b9ed886993313b0d.png",
+  "generated_at": "2026-10-30 20:41:03"
+ },
+ "frac-optimize-opt": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Fracturing-optimization dashboard graphic: three smooth pumping-parameter curves (rate, sand ratio, fluid volume) stacked on the upper half, a Pareto-frontier scatter of dots with one brass star optimum below, and a row of horizontal design-comparison bars along the bottom.",
+  "task_id": "task_VAtACvXM6BNuS70BovOYpKzoylaojRDn",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_VAtACvXM6BNuS70BovOYpKzoylaojRDn/output_1f2652e6968344df842643a09bf16131.png",
+  "generated_at": "2026-10-30 20:41:29"
+ },
+ "gaslogging-fluid-ts": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Mud-gas interpretation plate: a tall total-hydrocarbon spiking curve on the left, a set of vertical component-ratio bars in the middle, and a crossplot panel on the right where two smooth curves intersect inside a triangular fluid-zone envelope.",
+  "task_id": "task_QWU14rQYtDLX03nzoYfhhQpgRRTrKaGu",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_QWU14rQYtDLX03nzoYfhhQpgRRTrKaGu/output_7d30715a4cbf45d4a4af1faab4f43773.png",
+  "generated_at": "2026-10-30 20:41:54"
+ },
+ "pipeline-leak-ts": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Pipeline leak-detection graphic: a long horizontal pipeline route line with round valve-station nodes across the upper third, two declining pressure curves beneath it, one glowing signal-red alarm pin dropped exactly where the curves diverge, with faint concentric alert rings.",
+  "task_id": "task_31dsANa7Qa2eo29lWO6g2eSSCJDpIDdy",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_31dsANa7Qa2eo29lWO6g2eSSCJDpIDdy/output_77dd56dcf12c4dc19ba971ba4e4c2815.png",
+  "generated_at": "2026-10-30 20:38:32"
+ },
+ "pump-diagnosis-cv": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Six sucker-rod pump dynamometer cards (closed load-versus-displacement loops) arranged in a two-by-three grid, each loop a different condition color in teal, brass, ochre, slate and red; the bottom-right loop circled by a signal-red dashed ring as the anomaly.",
+  "task_id": "task_xX471ZeqkYvFi1q6fT765y9LAlDxzBYK",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_xX471ZeqkYvFi1q6fT765y9LAlDxzBYK/output_7219605f7201462eb65c9f7d9a452ecb.png",
+  "generated_at": "2026-10-30 20:38:10"
+ },
+ "workover-duration-ts": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Workover-schedule Gantt graphic: seven horizontal progress bars in a left list, each bar carrying a shaded P50-to-P80 duration band with a diamond milestone, and a smooth bell-shaped probability-distribution curve occupying the right third of the frame.",
+  "task_id": "task_hBgo7D8qm7GjewEHuaWgRcf0DWFsn8GD",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_hBgo7D8qm7GjewEHuaWgRcf0DWFsn8GD/output_f8bb6717f60046e296ad29f51feeb153.png",
+  "generated_at": "2026-10-30 20:38:59"
+ },
+ "workover-plan-kg": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Knowledge-graph diagram: four vertical columns of round nodes (symptoms, processes, tools, outcomes) linked by curved edges, one reasoning path from left to right highlighted in glowing brass with enlarged nodes, the rest in muted ink outlines.",
+  "task_id": "task_V5K4wJoYZqAT7BbnsD0mzPZ3xfwULAFn",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_V5K4wJoYZqAT7BbnsD0mzPZ3xfwULAFn/output_7203ffd78bdc4e99abd019462679d3cc.png",
+  "generated_at": "2026-10-30 20:39:23"
+ },
+ "workover-risk-ts": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "Flat technical-infographic illustration, 16:9 horizontal composition, the diagram itself fills the entire frame edge to edge. Light warm-paper background (#F5EFE2), dark petrol-ink lines (#0E3A3E), brass and amber accents (#B07A2A, #D9B679), one signal-red (#A64B3C) reserved for alarms and damage marks only. Crisp vector look, fine grid lines, high visual density, generous margins, balanced layout. Absolutely no photographs, no monitors, no desks, no rooms, no people, no hands, no shadows. No legible text, no numbers, no letters, no logos, no watermarks. Real-time risk-monitor graphic: three jagged monitoring curves (pressure, pressure, flow rate) running left to right, one curve spiking sharply through a horizontal signal-red threshold line, a bold alarm badge bursting at the crossing point, small gauge dials tucked in the lower corners.",
+  "task_id": "task_mUNh7ikz8HhsSowh7YBmQy0o6CCLO8wQ",
+  "source_url": "https://platform-outputs.agnes-ai.space/images/t2i/task_mUNh7ikz8HhsSowh7YBmQy0o6CCLO8wQ/output_eac371fec61e4fd390abb7d343b05a64.png",
+  "generated_at": "2026-10-30 20:39:47"
+ },
+ "hero": {
+  "model": "agnes-image-2.5-flash",
+  "prompt": "工业可视化摄影，中国油田现场，低饱和青灰色与黄铜色调，写实质感，16:9 横构图，画面中没有人物、人影、人脸、手或身体部位；屏幕内容只表现抽象曲线、图形、矩阵、甘特条与色块，不要出现可辨认的文字、数字、标识、水印、品牌 logo。油田智能化调度中心的宽幅场景，多块屏幕分别显示测井曲线、示功图、管道走向图、打捞工具矩阵、修井甘特图和压力曲线；深色控制台、键盘与图纸；电影感，无人物，屏幕只有抽象曲线与图形。",
+  "task_id": "task_CvE8VARaWKsNkIuWAR5H1gdiUi2cN95R",
+  "source_url": "https://cos-platform-outputs.agnes-ai.cn/images/t2i/task_CvE8VARaWKsNkIuWAR5H1gdiUi2cN95R/output_a58ad0086f1d49ebb9afb2bb42d4bcb6.png",
+  "generated_at": "2026-10-30 19:29:53"
+ }
+}

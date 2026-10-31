@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>正在打开 · 石油智能可视化图鉴</title>
+<!-- 这个文件只做一件事：带一个全新的查询串跳转到首页，
+     用来绕开浏览器对 index.html 自身的缓存（改了首页但看到旧版时用）。 -->
+<meta http-equiv="refresh" content="0;url=index.html?fresh=20261102a">
+<style>
+  html,body{height:100%;margin:0;background:#04100f;color:#cfe9df;
+    font:14px/1.7 -apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}
+  .box{height:100%;display:grid;place-items:center;text-align:center;padding:24px}
+  a{color:#8ef0cd}
+  p{margin:6px 0;opacity:.7;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="box">
+  <div>
+    <b>正在打开首页…</b>
+    <p>如果没有自动跳转，点这里：<a href="index.html?fresh=20261102a">打开 3D 首页</a></p>
+    <p>这个入口带版本参数，专门用来绕开旧缓存。</p>
+  </div>
+</div>
+<script>location.replace('index.html?fresh=20261102a');</script>
+</body>
+</html>

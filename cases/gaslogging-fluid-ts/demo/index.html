@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示范：气测异常智能解释（基线校正 + Pixler 图版）</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  #log{display:block;width:100%;height:470px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:crosshair}
+  #cmp{display:block;width:100%;height:300px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #pixler{display:block;width:100%;height:auto}
+  .segrow{cursor:pointer}
+  .segrow.sel td{background:var(--jade-l)}
+  .segrow td.r{white-space:nowrap}
+  .mrow{display:flex;justify-content:space-between;gap:10px;font-size:11px;padding:5px 0;border-bottom:1px solid var(--line)}
+  .mrow:last-child{border-bottom:0}
+  .mrow .k{color:var(--ink-3);white-space:nowrap}
+  .mrow .v{font-family:var(--mono);color:var(--ink-2);text-align:right}
+</style>
+</head>
+<body>
+
+<div class="dhead">
+  <div>
+    <div class="dkick">GAS LOGGING · 时序检测 + 图版判别</div>
+    <h1>气测全烃与组分 → 异常段 → 油 / 气 / 水结论</h1>
+    <p class="lead">左边是 3000—4200 m 的合成气测曲线：<b>全烃</b>（橙）、<b>C1—C5 组分</b>（中间对数轨）与<b>钻时</b>共用一个深度轴，
+    底纹是算法检出的异常段。右上是 Pixler 双对数图版，各异常段的组分比落点随参数实时移动；右下是结论表。
+    把鼠标放到曲线上可以读该深度的数值。</p>
+  </div>
+  <div class="dhead-r">
+    <div class="dstat"><div class="k">异常段</div><div class="v" id="st-n">—</div></div>
+    <div class="dstat good"><div class="k">命中 / 结论</div><div class="v" id="st-recall">—</div></div>
+    <div class="dstat warn"><div class="k">误报段</div><div class="v" id="st-fp">—</div></div>
+    <div class="dstat"><div class="k">复核工时</div><div class="v" id="st-time" style="font-size:12px">—</div></div>
+  </div>
+</div>
+
+<div class="dctl">
+  <div class="grp"><span class="glbl">工况</span><div class="seg" id="seg-mode"></div></div>
+  <div class="grp"><span class="glbl">基线方法</span><div class="seg" id="seg-base"></div></div>
+  <div class="ctl-s"><label>峰高阈值 k·σ</label><input type="range" id="r-k" min="1.5" max="8" step="0.5" value="3"><output id="o-k">3.0 σ</output></div>
+  <div class="ctl-s"><label>最小持续</label><input type="range" id="r-len" min="3" max="8" step="1" value="3"><output id="o-len">3 点</output></div>
+  <div class="ctl-s"><label>基线窗口</label><input type="range" id="r-win" min="10" max="80" step="5" value="40"><output id="o-win">40 点</output></div>
+  <div class="ctl-s"><label>分位数 q</label><input type="range" id="r-q" min="5" max="40" step="5" value="20"><output id="o-q">20%</output></div>
+  <label class="tog on" id="tog-spk"><i></i>接单根尖峰（背景漂移始终存在）</label>
+  <label class="tog on" id="tog-comp"><i></i>显示 C1—C5（仅影响绘制）</label>
+  <button class="dbtn reset" id="btn-reset" type="button" style="margin-left:auto">重置参数</button>
+</div>
+
+<div class="dgrid c2">
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>气测曲线 · 全烃 / 组分 / 钻时</b><span id="hint">深度 3400 m</span></div>
+      <canvas id="log" width="1400" height="940"></canvas>
+      <div class="dfig-foot">
+        <span><i style="background:#16231f;height:4px"></i>实测全烃</span>
+        <span><i class="dash" style="border-top-color:#a86a1f"></i>背景气基线</span>
+        <span><i style="background:#1d4e50"></i>C1</span>
+        <span><i style="background:#355c74"></i>C2</span>
+        <span><i style="background:#a64b3c"></i>C3</span>
+        <span><i style="background:#99a3a4"></i>钻时</span>
+        <span>底纹 = 检出异常段</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>基线校正前后</b><span>左：实测与基线 · 右：校正后与阈值</span></div>
+      <canvas id="cmp" width="1400" height="600"></canvas>
+      <div class="dfig-foot">
+        <span><i style="background:#99a3a4"></i>实测曲线</span>
+        <span><i class="dash"></i>估计基线</span>
+        <span><i style="background:#1d4e50"></i>校正后</span>
+        <span><i style="background:#a64b3c"></i>阈值线</span>
+        <span>红框 = 合成真值层段未被检出</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig">
+      <div class="dfig-h"><b>Pixler 图版 · C1/C2 — C1/C3</b><span>双对数 · 点号对应结论表</span></div>
+      <svg id="pixler" viewBox="0 0 330 300" role="img" aria-label="Pixler 组分比图版"></svg>
+      <div class="dfig-foot">
+        <span><i class="sq" style="background:#f4e8d4;border:1px solid #e3d2b0"></i>油区</span>
+        <span><i class="sq" style="background:#e7eee9;border:1px solid #c8dbd2"></i>气区</span>
+        <span><i class="sq" style="background:#e5ebf0;border:1px solid #cdd8e2"></i>水区</span>
+        <span>灰点 = 图版外（待人工复核）</span>
+      </div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>异常段结论</b><span>点击行看图版落点</span></div>
+      <table class="dtable"><thead><tr><th>深度 m</th><th class="num">峰值 %</th><th class="num">C1/C2*</th><th class="num">C1/C3*</th><th>结论</th></tr></thead><tbody id="hits"></tbody></table>
+      <div style="font-size:9.5px;color:var(--ink-4);padding:6px 0 2px">* 已按背景气组成扣除，与曲线上的原始读数不同；比值无量纲。</div>
+    </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>判据与统计</b><span>当前设置</span></div>
+      <div id="clist"></div>
+    </div>
+  </div>
+</div>
+
+<p class="dnote" id="note"></p>
+
+<script src="demo.js"></script>
+</body>
+</html>
