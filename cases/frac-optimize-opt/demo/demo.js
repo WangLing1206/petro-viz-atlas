@@ -708,7 +708,19 @@
       s += '<text x="' + (L - 8) + '" y="' + (y + 13) + '" text-anchor="end" font-size="9.5" fill="#45524d">' + c.label + '</text>';
       s += '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + w.toFixed(1) + '" height="' + rowH + '" fill="' + c.col + '" opacity=".82"' + (c.feas ? '' : ' stroke="#9c4235" stroke-width="1.2" stroke-dasharray="3 2"') + '/>';
       var val = (c.d >= 0 ? '+' : '') + c.d.toFixed(1);
-      s += '<text x="' + (c.d >= 0 ? (x + w + 4) : (x - 4)) + '" y="' + (y + 14) + '" text-anchor="' + (c.d >= 0 ? 'start' : 'end') + '" font-size="9" font-family="monospace" fill="' + (c.feas ? c.col : '#9c4235') + '">' + val + (c.feas ? '' : ' 超压') + '</text>';
+      /* 长条把数值写在条内，短条写在条外；避免压住左侧类目名 */
+      var inside = w > 44;
+      var tx, anchor, fill;
+      if (c.d >= 0) {
+        tx = inside ? x + w - 4 : x + w + 4;
+        anchor = inside ? 'end' : 'start';
+        fill = inside ? '#fbf8f0' : (c.feas ? c.col : '#9c4235');
+      } else {
+        tx = inside ? x + 4 : x - 4;
+        anchor = inside ? 'start' : 'end';
+        fill = inside ? '#fbf8f0' : (c.feas ? c.col : '#9c4235');
+      }
+      s += '<text x="' + tx + '" y="' + (y + 14) + '" text-anchor="' + anchor + '" font-size="9" font-family="monospace" fill="' + fill + '">' + val + (c.feas ? '' : ' 超压') + '</text>';
     });
     svg.innerHTML = s;
   }
