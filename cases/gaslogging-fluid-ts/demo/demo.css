@@ -198,3 +198,68 @@ button{touch-action:manipulation}
   .dhead{grid-template-columns:minmax(0,1fr)}
   .dhead-r{justify-content:flex-start}
 }
+
+/* =========================================================
+   AI 作业流示范（v4）
+   ---------------------------------------------------------
+   每个案例页都要能看见「现场输入 → 特征/知识化 → 模型推理 →
+   决策交付 → 闭环回写」这条链，而不是只摆一张结果图。
+   ========================================================= */
+.dflow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:9px;background:var(--card);overflow:hidden;margin-bottom:12px}
+.dflow button{position:relative;border:0;border-right:1px solid var(--line);background:transparent;text-align:left;padding:8px 11px 9px;cursor:pointer;font-family:var(--sans);min-width:0;appearance:none}
+.dflow button:last-child{border-right:0}
+.dflow button .n{font-family:var(--mono);font-size:8px;letter-spacing:.13em;color:var(--ink-4);display:flex;align-items:center;gap:6px;text-transform:uppercase}
+.dflow button .n i{width:15px;height:15px;border-radius:50%;border:1px solid var(--line-2);display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:8px;color:var(--ink-4);background:var(--card-soft);flex-shrink:0}
+.dflow button b{display:block;font-size:11.5px;font-weight:600;color:var(--ink-2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dflow button span{display:block;font-size:9px;color:var(--ink-4);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dflow button:hover b{color:var(--ink)}
+.dflow button.on{background:linear-gradient(180deg,var(--jade-l),rgba(231,238,233,.3))}
+.dflow button.on b{color:var(--jade-d)}
+.dflow button.on .n i{border-color:var(--jade);background:var(--jade);color:#fff}
+.dflow button.done .n i{background:var(--ok);border-color:var(--ok);color:#fff}
+.dflow button.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--jade)}
+
+.dstage{display:none}
+.dstage.on{display:block}
+.dstage-lede{font-size:11.5px;color:var(--ink-3);line-height:1.7;margin:3px 0 9px}
+.dstage-lede b{color:var(--ink)}
+.dstage-tag{font-family:var(--mono);font-size:8px;letter-spacing:.12em;color:var(--ink-4);text-transform:uppercase}
+
+.dmodel{border:1px solid var(--line);border-radius:9px;background:var(--card);padding:9px 12px 8px}
+.dmodel-h{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--ink-3);margin-bottom:4px}
+.dmodel-row{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:10.5px;line-height:1.55}
+.dmodel-row:last-child{border-bottom:0}
+.dmodel-row .k{font-family:var(--mono);font-size:8px;letter-spacing:.07em;color:var(--ink-4);padding-top:2px}
+.dmodel-row .v{color:var(--ink-2)}
+
+.dtrace{border-left:2px solid var(--jade);background:var(--card-soft);border-radius:0 6px 6px 0;padding:7px 10px;font-family:var(--mono);font-size:9.5px;line-height:1.8;color:var(--ink-3);max-height:132px;overflow:auto}
+.dtrace div{display:flex;gap:7px}
+.dtrace .t{color:var(--ink-4);flex-shrink:0}
+.dtrace b{color:var(--jade-d);font-weight:600}
+.dtrace .ok{color:var(--ok)}
+.dtrace .warn{color:var(--warn)}
+.dtrace .bad{color:var(--bad)}
+
+.dval{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.dval > div{background:var(--card);padding:8px 10px}
+.dval .k{font-family:var(--mono);font-size:8px;letter-spacing:.08em;color:var(--ink-4);white-space:nowrap}
+.dval .v{font-family:var(--mono);font-size:15px;line-height:1.35;margin-top:2px;color:var(--ink)}
+.dval .v small{font-family:var(--sans);font-size:8.5px;color:var(--ink-4);margin-left:2px}
+.dval .v.ok{color:var(--ok)}.dval .v.warn{color:var(--warn)}.dval .v.bad{color:var(--bad)}
+.dval .s{font-size:9.5px;color:var(--ink-4);line-height:1.5;margin-top:1px}
+
+.dcm{display:grid;gap:2px 4px;font-family:var(--mono);font-size:9px;align-items:center}
+.dcm .lb{text-align:right;color:var(--ink-4);font-size:8px;white-space:nowrap;overflow:hidden}
+.dcm i{display:block;height:15px;border-radius:2px}
+
+.dcurve{display:block;width:100%;height:auto}
+
+.dfeed{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.dfeed .dbtn{padding:4px 9px;font-size:10.5px}
+.dfeed-note{font-size:10px;color:var(--ink-4);line-height:1.6}
+
+@media (max-width:900px){
+  .dflow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dflow button{border-bottom:1px solid var(--line)}
+  .dval{grid-template-columns:minmax(0,1fr)}
+}

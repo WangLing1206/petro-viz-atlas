@@ -1,101 +1,151 @@
 {
   "id": "workover-plan-kg",
   "sceneId": "wo1",
-  "methods": ["kg", "nlp"],
-  "title": "修井作业方案智能推荐：案例推理",
-  "version": "1.0.0",
-  "updated": "2026-10-23",
+  "methods": [
+    "kg",
+    "nlp"
+  ],
+  "title": "修井方案智能推荐：从修井日报到施工方案",
+  "version": "2.0.0",
+  "updated": "2026-11-01",
   "status": "ready",
   "tabs": {
     "background": {
       "label": "专业背景",
-      "lede": "修井是作业链里「低频、高成本、强经验」的一环：一口井出问题，先要判断故障性质，再从几十种工艺与上百种井下工具里挑出一套组合。方案编制目前几乎完全依赖工程师的经验与历史井史。本案例讲的是把历史修井记录变成一张可检索的知识图谱：现场口径约 1200 井次，本示范抽取其中 16 井次做成可运行样例（5 维井况特征，落物/断脱类再追加落物形态与外径），让方案推荐从「问人」变成「问库」。",
+      "lede": "修井是作业链里「低频、高成本、强经验」的一环：一口井出问题，先要判断故障性质，再从几十种工艺与上百件工具里挑出一套组合，方案编制长期依赖井史与老师傅记忆。现场口径约 1200 井次/年，本示范抽取其中 16 井次做成可运行样例（7 维井况特征 + 16 份作业总结），让方案从「问人」变成「问库」。这条流水线分五段：**01 日报与井况输入**——粘贴一段日报，抽 7 个结构化字段并做质控；**02 NLP 实体抽取**——词典最长匹配 + 正则，命中片段、规范值与置信度都回到原文；**03 图谱检索与相似度**——故障族硬过滤，7 维加权结构相似度与 16 份报告的 TF-IDF 余弦合成，图谱点亮「故障→工序→工具→案例」路径；**04 方案组装**——按故障×工艺×工具分组，过工具台账硬约束，输出主方案、备选差异、具体工序与风险；**05 人工采纳与回写**——采纳/修改/驳回进入待审队列，价值按 1200 井次/年的现场口径核算。",
       "judge": [
-        { "label": "任务类型", "value": "检索 + 排序", "desc": "案例推理：找相似作业，而不是训一个黑箱" },
-        { "label": "数据门槛", "value": "500—2000 井次", "desc": "作业设计与总结、时效记录、工具台账" },
-        { "label": "可见收益", "value": "3 天 → 40 分钟", "desc": "方案初稿编制时间" },
-        { "label": "难度", "value": "高", "desc": "文本非结构化、样本少、评价口径模糊", "html": "<span class='dtag' data-d='高'>难度 高</span>" }
+        {
+          "label": "任务类型",
+          "value": "实体抽取 + 案例检索 + 方案组装",
+          "desc": "NLP + 图谱 + CBR；不是端到端生成方案，也不是只给相似度列表"
+        },
+        {
+          "label": "数据门槛",
+          "value": "16 井次可跑 / 500—2000 井次可用",
+          "desc": "作业总结、井史井况、工具台账、标准术语表"
+        },
+        {
+          "label": "可见收益",
+          "value": "3 h → 20 min",
+          "desc": "方案初稿编制；历史案例复用率 68%"
+        },
+        {
+          "label": "难度",
+          "value": "高",
+          "desc": "日报写法不统一、术语未归一、相似不等于最优",
+          "html": "<span class='dtag' data-d='高'>难度 高</span>"
+        }
       ],
       "sections": [
         {
           "no": 1,
           "en": "PROBLEM",
           "title": "当前做法与问题",
-          "html": "<p>修井方案要针对具体故障（井下落物、套管变形、出水水淹、砂卡出砂、管柱断脱）选定<b>工艺</b>与<b>工具组合</b>，它决定作业周期与一次成功率。现在的编制过程是：翻这口井的井史与历次作业总结 → 找同区块类似故障的井 → 凭经验判断哪些做法能用 → 手写方案报审。</p><p>问题有三个：<b>慢</b>——一口井的方案编制要 2—3 天；<b>不一致</b>——同类故障在不同井上的处理方式差异很大，年轻工程师上手慢；<b>经验流失</b>——老师傅的判断依据从不落纸，人一退休，一千多井次的作业经验就等于不存在。</p><div class='figure'><svg viewBox='0 0 660 200' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='人工编制与图谱检索的对比'><rect x='12' y='26' width='266' height='150' rx='9' fill='#fdfcf9' stroke='#d3c9b6'/><text x='28' y='46' font-size='10' font-family='monospace' fill='#99a3a4' letter-spacing='1.4'>MANUAL · 人工编制</text><rect x='28' y='60' width='64' height='80' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><rect x='100' y='68' width='64' height='72' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><rect x='172' y='56' width='64' height='84' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><text x='60' y='103' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>井史</text><text x='132' y='108' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>作业总结</text><text x='204' y='102' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>工具手册</text><text x='28' y='158' font-size='10' fill='#a64b3c'>逐份翻阅 · 依赖班组记忆 · 同类故障做法不一</text><path d='M292 100 L342 100' stroke='#d3c9b6' stroke-width='1.4'/><path d='M336 95 L344 100 L336 105 Z' fill='#d3c9b6'/><text x='316' y='88' font-size='10' fill='#a64b3c' text-anchor='middle'>2—3 天</text><rect x='350' y='26' width='298' height='150' rx='9' fill='#faf7f0' stroke='#c8d9d1'/><text x='366' y='46' font-size='10' font-family='monospace' fill='#1d4e50' letter-spacing='1.4'>GRAPH · 图谱检索</text><circle cx='404' cy='104' r='15' fill='#e7eee9' stroke='#1d4e50'/><circle cx='474' cy='74' r='13' fill='#f4e8d4' stroke='#a9742c'/><circle cx='474' cy='134' r='13' fill='#f4e8d4' stroke='#a9742c'/><circle cx='548' cy='74' r='15' fill='#e5ebf0' stroke='#355c74'/><circle cx='548' cy='134' r='15' fill='#e5ebf0' stroke='#355c74'/><circle cx='612' cy='104' r='13' fill='#e7eee9' stroke='#1d4e50'/><path d='M418 97 L462 78 M418 111 L462 130 M486 70 L534 74 M486 138 L534 134 M562 70 L600 98 M562 138 L600 112' stroke='#c3cdc4' stroke-width='1.2' fill='none'/><path d='M418 100 L462 126 M486 136 L534 136 M562 138 L602 110' stroke='#1d4e50' stroke-width='2' fill='none' stroke-dasharray='5 3'/><text x='404' y='145' font-size='8.5' fill='#4a585c' text-anchor='middle'>井况</text><text x='474' y='54' font-size='8.5' fill='#83551f' text-anchor='middle'>工艺</text><text x='548' y='54' font-size='8.5' fill='#355c74' text-anchor='middle'>工具</text><text x='612' y='86' font-size='8.5' fill='#123a3d' text-anchor='middle'>效果</text><text x='366' y='168' font-size='10' fill='#123a3d'>相似度排序 · 每条推荐都附历史证据（虚线为命中路径）</text></svg></div><div class='figcap'><b>图 1</b><span>同样一件事：左边是把经验装在人脑里，右边是把经验装进图里。区别不在快慢，而在<b>可追溯</b>——推荐结果能指着一条历史作业说「因为这三口井是这么做的、成功率多少」。</span></div>"
+          "html": "<p>修井方案要针对具体故障（井下落物、套管变形、出水水淹、砂卡出砂、管柱断脱）选定<b>工艺</b>与<b>工具组合</b>，它决定作业周期与一次成功率。现在的编制过程是：翻这口井的井史与历次作业总结 → 找同区块类似故障的井 → 凭经验判断哪些做法能用 → 手写方案报审。</p><p>问题有三个：<b>慢</b>——一口井的方案初稿要 3 小时；<b>不一致</b>——同类故障在不同井上的处理方式差异很大，年轻工程师上手慢；<b>经验流失</b>——老师傅的判断依据从不落纸，人一退休，一千多井次的作业经验就等于不存在。</p><div class='figure'><svg viewBox='0 0 660 200' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='人工编制与图谱检索的对比'><rect x='12' y='26' width='266' height='150' rx='9' fill='#fdfcf9' stroke='#d3c9b6'/><text x='28' y='46' font-size='10' font-family='monospace' fill='#99a3a4' letter-spacing='1.4'>MANUAL · 人工编制</text><rect x='28' y='60' width='64' height='80' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><rect x='100' y='68' width='64' height='72' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><rect x='172' y='56' width='64' height='84' rx='4' fill='#efe9dd' stroke='#d3c9b6'/><text x='60' y='103' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>井史</text><text x='132' y='108' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>作业总结</text><text x='204' y='102' font-size='9.5' fill='#6f7a7c' text-anchor='middle'>工具手册</text><text x='28' y='158' font-size='10' fill='#a64b3c'>逐份翻阅 · 依赖班组记忆 · 同类故障做法不一</text><path d='M292 100 L342 100' stroke='#d3c9b6' stroke-width='1.4'/><path d='M336 95 L344 100 L336 105 Z' fill='#d3c9b6'/><text x='316' y='88' font-size='10' fill='#a64b3c' text-anchor='middle'>3 h → 20 min</text><rect x='350' y='26' width='298' height='150' rx='9' fill='#faf7f0' stroke='#c8d9d1'/><text x='366' y='46' font-size='10' font-family='monospace' fill='#1d4e50' letter-spacing='1.4'>GRAPH · 图谱检索</text><circle cx='404' cy='104' r='15' fill='#e7eee9' stroke='#1d4e50'/><circle cx='474' cy='74' r='13' fill='#f4e8d4' stroke='#a9742c'/><circle cx='474' cy='134' r='13' fill='#f4e8d4' stroke='#a9742c'/><circle cx='548' cy='74' r='15' fill='#e5ebf0' stroke='#355c74'/><circle cx='548' cy='134' r='15' fill='#e5ebf0' stroke='#355c74'/><circle cx='612' cy='104' r='13' fill='#e7eee9' stroke='#1d4e50'/><path d='M418 97 L462 78 M418 111 L462 130 M486 70 L534 74 M486 138 L534 134 M562 70 L600 98 M562 138 L600 112' stroke='#c3cdc4' stroke-width='1.2' fill='none'/><path d='M418 100 L462 126 M486 136 L534 136 M562 138 L602 110' stroke='#1d4e50' stroke-width='2' fill='none' stroke-dasharray='5 3'/><text x='404' y='145' font-size='8.5' fill='#4a585c' text-anchor='middle'>井况</text><text x='474' y='54' font-size='8.5' fill='#83551f' text-anchor='middle'>工艺</text><text x='548' y='54' font-size='8.5' fill='#355c74' text-anchor='middle'>工具</text><text x='612' y='86' font-size='8.5' fill='#123a3d' text-anchor='middle'>效果</text><text x='366' y='168' font-size='10' fill='#123a3d'>相似度排序 · 每条推荐都附历史证据（虚线为命中路径）</text></svg></div><div class='figcap'><b>图 1</b><span>同样一件事：左边是把经验装在人脑里，右边是把经验装进图里。区别不在快慢，而在<b>可追溯</b>——推荐结果能指着一条历史作业说「因为这三口井是这么做的、成功率多少」。</span></div>"
         },
         {
           "no": 2,
           "en": "INTERVENTION",
-          "title": "AI 能做什么",
-          "html": "<p>这里用的不是「训一个模型直接输出方案」，而是<b>知识图谱 + 案例推理（CBR）</b>：先做<b>实体与关系抽取</b>，把非结构化的作业总结变成结构化的四元组——<b>故障现象 → 选用工艺 → 使用工具 → 作业效果</b>；再把这套关系连同井况数值（井深、套管通径、含水率、是否出砂；落物/断脱类再加落物形态与外径）一起，建成案例库。</p><p>推荐时把当前井况编码成一个特征向量，在案例库里做<b>加权相似度检索</b>（分类特征按相等给分，数值特征按区间隶属度给分），输出同族 Top-3 相似作业，再按「相似度 × 历史成功率」排序成候选方案。算法输出的是<b>候选 + 证据</b>，最终签字的仍然是工程师。</p><div class='figure'><svg viewBox='0 0 660 216' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='故障—工艺—工具—效果四类实体与关系'><defs><marker id='ar1' markerWidth='7' markerHeight='7' refX='6' refY='3' orient='auto'><path d='M0 0 L6 3 L0 6 Z' fill='#c3cdc4'/></marker></defs><rect x='10' y='20' width='146' height='176' rx='9' fill='#fdfcf9' stroke='#e3dccd'/><text x='26' y='40' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>① 故障现象</text><rect x='26' y='52' width='114' height='22' rx='5' fill='#f5e6e1' stroke='#dcc3bd'/><text x='83' y='67' font-size='10' fill='#a64b3c' text-anchor='middle'>井下落物</text><rect x='26' y='80' width='114' height='22' rx='5' fill='#f5e6e1' stroke='#dcc3bd'/><text x='83' y='95' font-size='10' fill='#a64b3c' text-anchor='middle'>套管变形</text><rect x='26' y='108' width='114' height='22' rx='5' fill='#f5e6e1' stroke='#dcc3bd'/><text x='83' y='123' font-size='10' fill='#a64b3c' text-anchor='middle'>出水水淹</text><rect x='26' y='136' width='114' height='22' rx='5' fill='#f5e6e1' stroke='#dcc3bd'/><text x='83' y='151' font-size='10' fill='#a64b3c' text-anchor='middle'>砂卡出砂</text><rect x='26' y='164' width='114' height='22' rx='5' fill='#f5e6e1' stroke='#dcc3bd'/><text x='83' y='179' font-size='10' fill='#a64b3c' text-anchor='middle'>管柱断脱</text><rect x='176' y='20' width='146' height='176' rx='9' fill='#fdfcf9' stroke='#e3dccd'/><text x='192' y='40' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>② 工艺</text><rect x='192' y='52' width='114' height='22' rx='5' fill='#f4e8d4' stroke='#e3d2b0'/><text x='249' y='67' font-size='10' fill='#83551f' text-anchor='middle'>打捞 / 磨铣</text><rect x='192' y='80' width='114' height='22' rx='5' fill='#f4e8d4' stroke='#e3d2b0'/><text x='249' y='95' font-size='10' fill='#83551f' text-anchor='middle'>套管整形</text><rect x='192' y='108' width='114' height='22' rx='5' fill='#f4e8d4' stroke='#e3d2b0'/><text x='249' y='123' font-size='10' fill='#83551f' text-anchor='middle'>找堵水</text><rect x='192' y='136' width='114' height='22' rx='5' fill='#f4e8d4' stroke='#e3d2b0'/><text x='249' y='151' font-size='10' fill='#83551f' text-anchor='middle'>冲砂 / 防砂</text><rect x='192' y='164' width='114' height='22' rx='5' fill='#f4e8d4' stroke='#e3d2b0'/><text x='249' y='179' font-size='10' fill='#83551f' text-anchor='middle'>压井（前置）</text><rect x='342' y='20' width='146' height='176' rx='9' fill='#fdfcf9' stroke='#e3dccd'/><text x='358' y='40' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>③ 工具</text><rect x='358' y='52' width='114' height='22' rx='5' fill='#e5ebf0' stroke='#cdd8e2'/><text x='415' y='67' font-size='10' fill='#355c74' text-anchor='middle'>卡瓦打捞筒</text><rect x='358' y='80' width='114' height='22' rx='5' fill='#e5ebf0' stroke='#cdd8e2'/><text x='415' y='95' font-size='10' fill='#355c74' text-anchor='middle'>捞矛 / 震击器</text><rect x='358' y='108' width='114' height='22' rx='5' fill='#e5ebf0' stroke='#cdd8e2'/><text x='415' y='123' font-size='10' fill='#355c74' text-anchor='middle'>磨鞋 / 套铣筒</text><rect x='358' y='136' width='114' height='22' rx='5' fill='#e5ebf0' stroke='#cdd8e2'/><text x='415' y='151' font-size='10' fill='#355c74' text-anchor='middle'>滚压整形器</text><rect x='358' y='164' width='114' height='22' rx='5' fill='#e5ebf0' stroke='#cdd8e2'/><text x='415' y='179' font-size='10' fill='#355c74' text-anchor='middle'>桥塞 / 化学堵剂</text><rect x='508' y='20' width='142' height='176' rx='9' fill='#faf7f0' stroke='#c8d9d1'/><text x='524' y='40' font-size='9.5' font-family='monospace' fill='#5f7d72' letter-spacing='1.2'>④ 效果</text><rect x='524' y='56' width='110' height='30' rx='5' fill='#e7eee9' stroke='#c8dbd2'/><text x='579' y='75' font-size='10' fill='#123a3d' text-anchor='middle'>一次成功</text><rect x='524' y='94' width='110' height='30' rx='5' fill='#e7eee9' stroke='#c8dbd2'/><text x='579' y='113' font-size='10' fill='#123a3d' text-anchor='middle'>多次起下钻</text><rect x='524' y='132' width='110' height='30' rx='5' fill='#e7eee9' stroke='#c8dbd2'/><text x='579' y='151' font-size='10' fill='#123a3d' text-anchor='middle'>需二次措施</text><path d='M148 63 L184 63' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#ar1)'/><path d='M148 147 L184 147' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#ar1)'/><path d='M314 63 L350 63' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#ar1)'/><path d='M314 147 L350 147' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#ar1)'/><path d='M480 63 L516 71' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#ar1)'/><text x='166' y='192' font-size='9' fill='#99a3a4' text-anchor='middle'>触发</text><text x='332' y='192' font-size='9' fill='#99a3a4' text-anchor='middle'>选用</text><text x='498' y='192' font-size='9' fill='#99a3a4' text-anchor='middle'>评价</text></svg></div><div class='figcap'><b>图 2</b><span>知识图谱的骨架就这么四列。难点不在图大小，而在<b>从作业总结里抽出这些边</b>——「用卡瓦打捞筒捞出了油管」这句话要变成 井下落物 →(触发) 打捞 →(选用) 卡瓦打捞筒 →(评价) 一次成功 这条链。</span></div>"
+          "title": "AI 能做什么：五段作业流",
+          "html": "<p>这里不做端到端黑箱，而是把「看日报 → 找案例 → 写方案」拆成五段可复算的作业流。每一段都有明确的输入、输出和失败边界，后一段只吃前一段的结果：</p><p><b>01 日报与井况输入</b>——现场粘贴一段修井日报，抽 7 个结构化字段（故障、井深、套管通径、含水、出砂、落物形态、落物外径）。质控先判能不能检索：故障/井深/通径缺失就降级；落物外径 ≥ 套管内径直接退回；落物类缺形态或外径，工具硬约束不完整，也只能降级。</p><p><b>02 NLP 实体抽取</b>——术语词典做最长匹配与同义词归一（捞筒 / 打捞筒 / 卡瓦打捞筒 → 卡瓦打捞筒），正则抽井深、套管、含水、落物外径。每个实体保留原文片段、规范值、命中方式（词典/正则）与置信度；抽取覆盖率与未命中字段一起展示，低置信度交人工补。</p><p><b>03 图谱检索与相似度</b>——故障族硬过滤后，7 维结构相似度（分类相等、数值按距离、分故障加权）与 16 份作业总结的 TF-IDF 余弦（词典词元 + 汉字二元组）合成总分；图谱点亮「故障实体 → 工序 → 工具 → 历史案例」的命中路径，点每条案例能看到结构分项与共享词元的贡献。</p><p><b>04 方案组装</b>——按「故障 × 工艺 × 工具」分组，先过工具台账（外径 / 最小通过内径 / 适用落物尺寸与形态）硬约束，再按相似度 × 历史成功率排序；主方案给出具体工序、工具组合与校核，备选说清与主方案的差异和选用条件，风险按井控、落物、井深、成功率逐条生成。</p><p><b>05 人工采纳与回写</b>——工程师采纳、修改或驳回。采纳进案例库待审队列，修改进工具/工序模板修正，驳回进错题集；待审记录本轮不参与检索，避免用自己答案证明自己。价值按 1200 井次/年、3 h → 20 min、复用率 68%、同类事故重复率 下降 35% 的现场口径核算，页面只实测解析/检索耗时与留一 Hit@3。</p><div class='figure'><svg viewBox='0 0 660 150' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='修井方案五段作业流'><defs><marker id='wo5a' markerWidth='7' markerHeight='7' refX='6' refY='3' orient='auto'><path d='M0 0 L6 3 L0 6 Z' fill='#c3cdc4'/></marker></defs><rect x='10' y='24' width='116' height='84' rx='6' fill='#fdfcf9' stroke='#e3dccd'/><text x='21' y='40' font-size='8.5' font-family='monospace' fill='#99a3a4' letter-spacing='.8'>01 INPUT</text><text x='21' y='55' font-size='10.5' font-weight='600' fill='#1a2428'>日报与井况</text><text x='21' y='70' font-size='8.3' fill='#6f7a7c'>粘贴日报</text><text x='21' y='82' font-size='8.3' fill='#6f7a7c'>7 字段 + 质控</text><text x='21' y='96' font-size='8.3' fill='#a64b3c'>退回 / 降级</text><rect x='140' y='24' width='116' height='84' rx='6' fill='#faf7f0' stroke='#e3dccd'/><text x='151' y='40' font-size='8.5' font-family='monospace' fill='#99a3a4' letter-spacing='.8'>02 NLP</text><text x='151' y='55' font-size='10.5' font-weight='600' fill='#1a2428'>实体抽取</text><text x='151' y='70' font-size='8.3' fill='#6f7a7c'>词典最长匹配</text><text x='151' y='82' font-size='8.3' fill='#6f7a7c'>正则抽数字</text><text x='151' y='96' font-size='8.3' fill='#83551f'>原文回标 + 置信度</text><rect x='270' y='24' width='116' height='84' rx='6' fill='#e7eee9' stroke='#c8d9d1'/><text x='281' y='40' font-size='8.5' font-family='monospace' fill='#99a3a4' letter-spacing='.8'>03 RETRIEVAL</text><text x='281' y='55' font-size='10.5' font-weight='600' fill='#123a3d'>图谱检索</text><text x='281' y='70' font-size='8.3' fill='#4a585c'>故障族硬过滤</text><text x='281' y='82' font-size='8.3' fill='#4a585c'>结构 0.70 + 文本 0.30</text><text x='281' y='96' font-size='8.3' fill='#123a3d'>命中路径 + 分项</text><rect x='400' y='24' width='116' height='84' rx='6' fill='#f4e8d4' stroke='#e3d2b0'/><text x='411' y='40' font-size='8.5' font-family='monospace' fill='#99a3a4' letter-spacing='.8'>04 PLAN</text><text x='411' y='55' font-size='10.5' font-weight='600' fill='#83551f'>方案组装</text><text x='411' y='70' font-size='8.3' fill='#83551f'>工序 + 工具组合</text><text x='411' y='82' font-size='8.3' fill='#83551f'>主方案 + 备选</text><text x='411' y='96' font-size='8.3' fill='#a64b3c'>差异 + 风险</text><rect x='530' y='24' width='116' height='84' rx='6' fill='#e5ebf0' stroke='#cdd8e2'/><text x='541' y='40' font-size='8.5' font-family='monospace' fill='#99a3a4' letter-spacing='.8'>05 LOOP</text><text x='541' y='55' font-size='10.5' font-weight='600' fill='#355c74'>人工采纳</text><text x='541' y='70' font-size='8.3' fill='#355c74'>采纳 / 修改 / 驳回</text><text x='541' y='82' font-size='8.3' fill='#355c74'>回写待审队列</text><text x='541' y='96' font-size='8.3' fill='#83551f'>下一轮检索更新</text><path d='M126 66 L136 66' stroke='#c3cdc4' stroke-width='1.2' marker-end='url(#wo5a)'/><path d='M256 66 L266 66' stroke='#c3cdc4' stroke-width='1.2' marker-end='url(#wo5a)'/><path d='M386 66 L396 66' stroke='#c3cdc4' stroke-width='1.2' marker-end='url(#wo5a)'/><path d='M516 66 L526 66' stroke='#c3cdc4' stroke-width='1.2' marker-end='url(#wo5a)'/><text x='10' y='134' font-size='9' fill='#6f7a7c'>前一段的输出是后一段的输入；任何一段不合格都不进入方案组装。图谱上的虚线 = 当前案例的命中路径，不是人为画的流程示意。</text></svg></div><div class='figcap'><b>图 2</b><span>五段不是五个页面，而是一条链：日报的每个实体都能回到原文，每条相似度都能拆成结构分项与文本词元，每套方案都能追到具体历史井次与工具规格。</span></div>"
         },
         {
           "no": 3,
           "en": "DATA",
           "title": "你需要准备什么",
-          "html": "<p>这套方法的门槛不高但很「脏」：核心不是算法，而是把历史作业记录整理成可计算的形式。下面五项缺一项，推荐质量都会明显下降。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 5 项</span><span class='cl-prog'><span id='cl-txt'>0 / 5</span><span class='cl-bar'><i id='cl-fill'></i></span></span></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>井史与故障描述</span><span class='cl-s'>井身结构、生产历史、故障现象、发生时间</span></span><span class='cl-n'>500—2000 井次</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>修井设计与总结</span><span class='cl-s'>工艺、工具组合、作业结果，非结构化文本</span></span><span class='cl-n'>抽 200 份人工校核</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>作业时效记录</span><span class='cl-s'>各工序起止时间、总工期</span></span><span class='cl-n'>用于工期区间估计</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>工具台账与规格</span><span class='cl-s'>型号、适用套管内径、最小可通过尺寸</span></span><span class='cl-n'>规则库，非学习数据</span></div><div class='cl-item' data-cl='4'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>标准术语表</span><span class='cl-s'>工具名、工序名的同义词与规范写法</span></span><span class='cl-n'>图谱能用的前提</span></div></div>"
+          "html": "<p>这套方法的门槛不高但很「脏」：核心不是算法，而是把历史作业记录整理成可计算的形式，再把日报里的写法对齐到同一套术语。下面五项缺一项，推荐质量都会明显下降。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 5 项</span><span class='cl-prog'><span id='cl-txt'>0 / 5</span><span class='cl-bar'><i id='cl-fill'></i></span></span></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>日报与作业总结</span><span class='cl-s'>故障现象、施工过程、工具组合、作业结果</span></span><span class='cl-n'>500—2000 井次</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>井史与井况</span><span class='cl-s'>井深、套管规格与通径、含水率、出砂、落物形态与外径</span></span><span class='cl-n'>7 个结构化字段</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>工具台账</span><span class='cl-s'>外径、最小可通过内径、适用落物尺寸与形态</span></span><span class='cl-n'>硬约束，非学习数据</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>标准术语表</span><span class='cl-s'>工具名、工序名的同义词与规范写法</span></span><span class='cl-n'>图谱能用的前提</span></div><div class='cl-item' data-cl='4'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>人工校核集</span><span class='cl-s'>100—200 井次人工标注，量化实体抽取与检索命中率</span></span><span class='cl-n'>评测集，不进训练</span></div></div>"
         },
         {
           "no": 4,
           "en": "DIFFICULTY",
           "title": "技术难度与参考方向",
-          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='高'>难度 高</span><span class='small muted'>难在文本抽取质量与评价口径，不在模型选型</span></div><div class='meter'><i class='on'></i><i class='on'></i><i class='on hi'></i></div><p>一段「起原井管柱，下磨鞋磨铣 3 h，下篮式捞筒捞出落物，试压合格」要抽出 3 个动作、2 个工具、1 个结果，还要对齐到标准术语表——这一步的准确率直接决定图谱可用性。样本量也偏小：单区块 1000—2000 井次，分摊到 5 类故障上每类只有几百条，靠数据堆不出精度，必须把规则、术语表和检索做得扎实。</p><p>建议的推进顺序：① 先做<b>规则 + 术语表</b>抽取结构化字段（工具、工序），不求全、求准；② 人工校核 100—200 井次作为评测集，量化抽取准确率；③ 再上文本分类 / 序列标注模型处理描述性段落；④ 最后做相似度检索与排序，并把工程师的采纳 / 否决结果回写，让排序权重随使用自我修正。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>知识图谱构建</span><span class='ref'>案例推理 CBR</span><span class='ref'>文本信息抽取</span><span class='ref'>相似度检索与排序</span></div><div class='callout warn'><span class='ci'>注意</span><span>推荐系统在这一环的定位是<b>方案初稿生成器</b>：它的价值是把候选与证据摆到工程师面前，把「想」的时间省掉，而不是替人签字。凡是涉及井控安全的工序（压井、井筒完整性处理），候选排序里必须带上风险提示。</span></div>"
+          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='高'>难度 高</span><span class='small muted'>难在日报抽取质量、术语归一与评价口径，不在模型选型</span></div><div class='meter'><i class='on'></i><i class='on'></i><i class='on hi'></i></div><p>一段「起原井管柱，通井打印见鱼顶 2280 m，落物为 φ80 mm 油管本体，下卡瓦打捞筒带震击器捞获，洗井、试压合格」要抽出 3 个动作、3 件工具、1 类故障、1 组井况，还要把「捞筒」「打捞筒」「卡瓦打捞筒」归一到同一节点——这一步的准确率直接决定图谱与检索是否可用。样本量也偏小：单区块 1000—2000 井次，分摊到 5 类故障上每类只有几百条，靠数据堆不出精度，必须把术语表、规则与检索做扎实。</p><p>建议的推进顺序：① 先做<b>术语表 + 正则</b>抽取结构化字段（工具、工序、井况），不求全、求准；② 人工校核 100—200 井次作为评测集，量化抽取准确率与检索 Hit@3；③ 再上文本分类 / 序列标注模型处理描述性段落，词典退为兜底；④ 最后做相似度融合与排序，并把工程师的采纳 / 修改 / 驳回结果回写，让权重随使用修正。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>术语词典与正则抽取</span><span class='ref'>TF-IDF 余弦检索</span><span class='ref'>知识图谱构建</span><span class='ref'>案例推理 CBR</span><span class='ref'>人工在环回写</span></div><div class='callout warn'><span class='ci'>注意</span><span>推荐系统在这一环的定位是<b>方案初稿生成器</b>：它的价值是把候选、证据、工序和风险摆到工程师面前，而不是替人签字。凡是涉及井控安全的工序（压井、井筒完整性处理），候选排序里必须带风险提示；低相似度或同族样本不足时，系统应明确说「证据不够」而不是硬给方案。</span></div>"
         }
       ]
     },
     "workflow": {
       "label": "案例流程",
-      "title": "某采油厂 1200 井次修井记录的方案推荐落地流程（示范 16 井次）",
+      "title": "某采油厂 1200 井次/年修井方案：从日报到施工方案（示范 16 井次）",
       "lead": [
-        "目标不是做一个「AI 出方案」的系统，而是把方案初稿的编制时间从 2—3 天压到 40 分钟以内，并且每一条推荐都能追溯到具体的历史作业。",
-        "数据是现成的：井史、修井设计与总结、时效记录、工具台账，都在作业管理系统里，缺的只是把它们变成一张可检索的图。"
+        "目标不是做一个「AI 出方案」的黑箱，而是把方案初稿的编制时间从 3 小时压到 20 分钟以内，并且每一条推荐都能追溯到具体历史作业、具体工具与具体风险。",
+        "数据是现成的：日报与作业总结、井史井况、工具台账都在作业管理系统里。缺的是一条把文本变成实体、把实体变成图谱路径、把路径变成可执行方案的流水线，以及工程师采纳/修改/驳回的回写。"
       ],
-      "stats": [["历史作业（现场口径）", "1200 井次"], ["示范样本", "16 井次"], ["特征维度", "5 维 + 落物尺寸"], ["编制工时", "3 天 → 40 分"]],
+      "stats": [
+        [
+          "年修井量",
+          "1200 井次"
+        ],
+        [
+          "示范案例",
+          "16 井次"
+        ],
+        [
+          "方案编制",
+          "3 h → 20 min"
+        ],
+        [
+          "案例复用率",
+          "68%"
+        ]
+      ],
       "steps": [
         {
-          "name": "文本治理与实体抽取",
-          "role": "数据",
-          "do": "把作业总结按工序切句，用「术语表 + 规则」抽出工具名、工序动作、作业结果，统一到标准术语（同名异物、异名同物都要归一）。",
-          "effect": "得到结构化的四元组候选；人工抽检 200 井次，抽取准确率 92%。",
-          "trap": "别一上来就上大模型做端到端抽取——不规范的历史记录会抽出大量似是而非的工具名，人工校核成本反而更高。"
+          "name": "日报与井况输入（质控）",
+          "role": "现场 / 数据",
+          "do": "粘贴一段修井日报，抽故障、井深、套管通径、含水、出砂、落物形态与外径 7 个字段。质控规则：故障/井深/通径缺失降级；落物外径 ≥ 套管内径退回；落物类缺形态或外径降级；日报过短退回补充。",
+          "effect": "16 井次示范日报都能走完质控：可用的进入检索，缺字段或通径不一致的明确标成降级，物理上不成立的退回补充。",
+          "trap": "不要用缺故障或缺落物尺寸的日报凑方案。结构字段可以人工补，但补了什么、和原文哪里不一致，必须在页面上看见。"
         },
         {
-          "name": "构建「现象—工艺—工具—效果」图谱",
-          "role": "算法",
-          "do": "以故障现象为入口节点，压井/井控作为全局前置节点、完井试压作为收尾节点；故障再连到候选工艺（起原井管柱、通井/打印、打捞、磨铣/套铣、洗井、套管整形、找堵水），工艺连工具，工具按历史案例统计效果分布。工艺节点在图上严格按施工顺序排列。",
-          "effect": "1200 井次作业压缩成约 2600 条关系边，图谱里每一条都能追问来源。",
-          "trap": "同一口井的多次作业要按时间断开成多个案例，否则会把两次不同故障用过的工具混在一起。"
+          "name": "NLP 实体抽取",
+          "role": "NLP",
+          "do": "术语词典做最长匹配与同义词归一（捞筒 / 打捞筒 / 卡瓦打捞筒 → 卡瓦打捞筒）；6 组正则抽井深、套管规格、通径、含水、落物外径。每个实体保留原文片段、规范值、命中方式和置信度。",
+          "effect": "默认日报抽出约 20 个实体（词典 13 / 正则 7），命中字符覆盖约 82%；实体表按 故障/井况/工具/工序/约束 分组，原文高亮可回看。",
+          "trap": "术语不归一会让同一件工具在图谱里变成三个节点；正则顺序不对会把「最小通径 108 mm」误当成套管规格。数字字段必须有物理一致性校验。"
         },
         {
-          "name": "井况向量化与相似度检索",
+          "name": "图谱检索与相似度",
           "role": "算法核心",
-          "do": "把当前井编码成特征向量：故障类型（分类）、井深、套管通径、含水率、是否出砂；落物/断脱类再加落物形态与外径。分类特征按相等给分，数值特征按区间隶属度给分，各特征按故障分表加权（权重和 1.00），故障本身作为硬过滤。",
-          "effect": "毫秒级返回同族 Top-10 相似作业，每条附相似度分项（哪个特征像、哪个不像）。",
-          "trap": "权重不能拍脑袋：先用 200 井次里「工程师认可的同井」做校验，把权重调到能复现工程师判断，再上线。"
+          "do": "故障族作为硬过滤；族内算 7 维结构相似度（分类相等、数值按距离、按故障分表加权，权重和 1.00）与 16 份作业总结的 TF-IDF 余弦（词典词元 + 汉字二元组，IDF 由 16 份报告估计），按 β 合成总分。",
+          "effect": "默认日报 Top-1 为 Y-1042，综合 0.91 = 0.70 × 结构 0.96 + 0.30 × 文本 0.81；留一案例（n=16）工艺 Hit@3 94%。点任意案例能看到 7 个结构分项与共享词元的贡献。",
+          "trap": "只按结构相似度会把不同工艺排到前面；只用文本相似度会被套话带偏。故障同族项在族内恒为 1，只是基准分，不参与族内排序。"
         },
         {
-          "name": "候选方案排序与证据打包",
-          "role": "算法",
-          "do": "把同族相似作业按「故障 × 工艺 × 工具」分组，先用工具台账做外径/最小可通过内径/适用落物尺寸硬约束，再按「相似度 × 历史成功率」排序成候选方案；每个方案给出故障、工艺、工具、证据井次、成功率区间与历史工期区间。",
-          "effect": "输出 Top-3 方案 + 证据链，方案要点与推荐理由在一页里说清。",
-          "trap": "只按相似度排序会把「相似但失败」的作业排到前面；成功率必须参与排序，且低成功率案例要显式标注。"
+          "name": "方案组装",
+          "role": "算法 + 业务规则",
+          "do": "按「故障 × 工艺 × 工具」分组，先过工具台账硬约束（外径 ≤ 通径、最小通过内径、适用落物尺寸与形态），再按综合相似度 × 历史成功率排序。主方案输出施工顺序、具体工序、工具组合与校核；备选输出与主方案的差异和选用条件。",
+          "effect": "默认日报得到主方案「卡瓦打捞筒 · 打捞」6 道工序、工具组合「卡瓦打捞筒 + 震击器 + 安全接头」、3 条风险；同时列出通过硬约束但同族无证据的工具，避免「看起来可选」。",
+          "trap": "只列相似案例不是方案。失败案例、低成功率、落物外径接近咬合上限都必须显式标注；备选要说清「什么条件下才选它」。"
         },
         {
-          "name": "工程师复核与结果回写",
-          "role": "人工",
-          "do": "工程师在候选里选定或改选方案，签字执行；作业完成后把实际工期与效果回写图谱，作为下一次检索的边权更新。",
-          "effect": "系统随使用变准：采纳率与 Top-3 命中率按季度复盘。",
-          "trap": "没有回写就没有闭环。只做「推荐」不做「记录结果」，一年后图谱还是上线那天的那张。"
+          "name": "人工采纳与回写",
+          "role": "人工 / 闭环",
+          "do": "工程师采纳、修改后采纳或驳回。采纳进案例库待审队列，修改进工具/工序模板修正，驳回进错题集；待审记录本轮不参与检索。价值按 1200 井次/年、3 h → 20 min、复用率 68%、同类事故重复率 下降 35% 的现场口径复盘。",
+          "effect": "页面实测日报解析 1—2 ms、检索 < 1 ms、留一 Hit@3 94%；回写计数与待审队列实时增加，但不会污染当前检索结果。",
+          "trap": "没有回写就没有闭环；把待审记录直接塞回检索会形成「自己证明自己」。回写必须经过班组长确认，并在下一轮用新的留出案例复验。"
         }
       ],
       "metrics": {
         "title": "怎么算“做对了”",
-        "html": "<p>不要用「方案准确率」这种无法定义的口径。可验收的是下面四项：</p><table class='dtable'><thead><tr><th>指标</th><th>定义</th><th>本案例取值</th></tr></thead><tbody><tr><td>Hit@3</td><td>工程师最终采用的方案落在 Top-3 候选里的比例</td><td>78%</td></tr><tr><td>证据可追溯率</td><td>推荐条目能给出至少 2 口相似历史井的比例</td><td>100%</td></tr><tr><td>编制工时</td><td>从接到井况到方案初稿完成的中位时间</td><td>40 min</td></tr><tr><td>危险方案拦截</td><td>历史成功率低于 40% 的方案被显式标注的比例</td><td>100%</td></tr></tbody></table><p>注意 Hit@3 是<b>上限指标</b>：它衡量「候选里有好东西」，不等于「系统选对了」。工程上更该盯的是第 4 项——把不该走的路明确标出来，比多推对一条更有价值。</p>"
+        "html": "<p style='font-size:12px;color:#6c7872;line-height:1.7;margin-bottom:10px'>必须把两套口径分开：<b>示范案例库</b>是 16 井次、16 份作业总结，页面实时计算；<b>现场口径</b>是 1200 井次/年的设定与人工复评统计。两者不能混用。</p><table class='dtable'><thead><tr><th>指标</th><th>示范案例库（页内实时）</th><th>现场口径（1200 井次/年）</th></tr></thead><tbody><tr><td>案例规模</td><td>16 井次 / 16 份作业总结</td><td>1200 井次/年</td></tr><tr><td>实体抽取</td><td>词典 150+ 条 + 6 组正则；默认日报约 20 个实体、覆盖约 82%</td><td>抽检 200 份，人工复评准确率 92%</td></tr><tr><td>检索验证</td><td>留一案例（n=16）工艺 Hit@3 94%；Top-1 综合 0.91</td><td>工程师采纳 Hit@3 78%</td></tr><tr><td>方案编制</td><td>页面只演示组装，不计时</td><td>3 h → 20 min</td></tr><tr><td>案例复用率</td><td>—</td><td>68%（方案含历史证据）</td></tr><tr><td>同类事故重复率</td><td>—</td><td>下降 35%（改造后年度对比）</td></tr><tr><td>危险方案拦截</td><td>每个候选至少 3 条风险提示，低成功率显式标注</td><td>100% 显式标注</td></tr></tbody></table><p>注意：页内的 94% 是 16 个案例留一检索的工艺命中率，不是现场采纳率；0.91 是默认日报的 Top-1 综合相似度，换一段日报就会变。现场 78% / 68% / 35% 是案例设定口径，示范页没有复现全量。</p>"
       },
       "fails": [
-        { "name": "术语没有归一", "why": "「捞筒」「打捞筒」「卡瓦筒」是同一个工具，不做术语表就会在图谱里变成三个节点，相似度检索时互相看不见。" },
-        { "name": "样本偏差只覆盖常见井型", "why": "1200 井次里 70% 是常规井下落物与砂卡，特殊故障（套管错位、落物卡死）样本极少，推荐会退化成「最相似的常见井」。" },
-        { "name": "相似 ≠ 最优", "why": "最相似的历史作业可能是一次失败尝试。排序必须让成功率参与，失败案例要作为排除项呈现，而不是混在候选里。" }
+        {
+          "name": "术语没有归一",
+          "why": "「捞筒」「打捞筒」「卡瓦打捞筒」是同一件工具，不做术语表就会在图谱里变成三个节点，相似度检索时互相看不见。"
+        },
+        {
+          "name": "样本偏差只覆盖常见井型",
+          "why": "1200 井次里多数是常规井下落物与砂卡，特殊故障（套管错位、落物卡死）样本极少，推荐会退化成「最相似的常见井」。"
+        },
+        {
+          "name": "相似 ≠ 最优",
+          "why": "最相似的历史作业可能是一次失败尝试。排序必须让成功率参与，失败案例要作为风险提示呈现，而不是混在候选里。"
+        },
+        {
+          "name": "回写污染检索",
+          "why": "把刚采纳的方案立刻写进案例库，下一轮检索会用自己的答案证明自己。待审队列必须与检索库隔离，经确认后再入库。"
+        }
       ]
     },
     "demo": {
@@ -103,8 +153,8 @@
       "html": "demo/index.html",
       "js": "demo/demo.js",
       "label": "可运行示范",
-      "intro": "拖动井况输入，看加权相似度检索怎么在 16 井次同族历史作业里挑出相似案例、组装候选方案，并在知识图谱上把命中路径点亮。",
-      "height": 900
+      "intro": "粘贴或点示例切换一段修井日报，看词典 + 正则怎样抽实体并回标原文、16 份报告的 TF-IDF 与 7 维结构相似度怎样合成排序、方案怎样按工序/工具/风险组装；点「运行全流程」或图上的故障/工具/案例，五个面板同步重算。",
+      "height": 1220
     }
   }
 }

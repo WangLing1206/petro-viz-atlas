@@ -3,100 +3,237 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>示范：套管损伤智能识别（多臂井径 + 成像）</title>
+<title>示范：从 16 臂井径到复核清单（套管完整性智能判读）</title>
 <link rel="stylesheet" href="demo.css">
 <style>
-  #log{display:block;width:100%;height:470px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:crosshair}
+  #log{display:block;width:100%;height:430px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:crosshair}
   .sect{border:1px solid var(--line);border-radius:8px;background:var(--card-soft);padding:4px}
   .sect svg{display:block;width:100%;height:auto}
-  .hit{display:grid;grid-template-columns:1fr auto;gap:6px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px;cursor:pointer}
-  .hit:last-child{border-bottom:0}
-  .hit:hover{background:var(--jade-l)}
-  .hit .d{font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
-  .hit .m{color:var(--ink-4);font-size:10px;margin-top:2px;line-height:1.5}
-  .hit .r{text-align:right}
-  .sig-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-  .sig{display:flex;flex-direction:column;gap:4px;align-items:center;padding:8px 6px 7px;border:1px solid var(--line);border-radius:4px;background:var(--card);cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
+  .left2{display:grid;grid-template-columns:minmax(0,236px) minmax(0,1fr);gap:12px;margin-top:12px}
+  .sig-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+  .sig{display:flex;flex-direction:column;gap:3px;align-items:center;padding:6px 4px 5px;border:1px solid var(--line);border-radius:4px;background:var(--card);cursor:pointer;text-align:center;transition:border-color .15s,background .15s;min-width:0}
   .sig:hover{border-color:var(--clay);background:var(--card-soft)}
   .sig.on{border-color:var(--clay);background:var(--clay-l)}
-  .sig svg{display:block;width:100%;max-width:132px;height:auto}
-  .sig .st{font-size:11px;font-weight:650;color:var(--ink)}
-  .sig .sd{font-size:8.5px;color:var(--ink-4);font-family:var(--mono)}
-  @media(max-width:760px){.sig-grid{grid-template-columns:1fr 1fr}}
+  .sig svg{display:block;width:100%;max-width:104px;height:auto}
+  .sig .st{font-size:8.5px;font-weight:600;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  #qc{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff}
+  #featpatch{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff}
+  .qrow{display:flex;justify-content:space-between;gap:8px;font-size:10px;padding:3px 0;border-bottom:1px dashed var(--line)}
+  .qrow:last-child{border-bottom:0}
+  .qrow .k{color:var(--ink-4);font-family:var(--mono);font-size:8px;letter-spacing:.03em;white-space:nowrap;padding-top:2px}
+  .qrow .v{color:var(--ink-2);text-align:right;line-height:1.45}
+  .qrow .v .s{color:var(--ink-4);font-size:8px}
+  .prow{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;min-height:40px}
+  .pitem{width:52px;text-align:center;min-width:0}
+  .pitem canvas{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:3px;background:#fff;image-rendering:pixelated}
+  .pitem span{display:block;font-family:var(--mono);font-size:7.5px;color:var(--ink-4);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pitem.pmore{width:31px;font-family:var(--mono);font-size:9px;color:var(--ink-4);padding-top:10px}
+  .prow.tiny{flex-wrap:nowrap;min-height:34px;flex:1}
+  .prow.tiny .pitem{width:33px}
+  .prow.tiny .pitem span{font-size:6.5px;line-height:1.2}
+  .ghrow{display:flex;align-items:center;gap:6px;margin:2px 0}
+  .ghrow .gh{width:64px;flex-shrink:0;font-family:var(--mono);font-size:7px;line-height:1.35;letter-spacing:.02em;color:var(--ink-4)}
+  .ghrow .gh b{color:var(--ink-2);font-weight:600}
+  .ghrow .gsub{font-family:var(--mono);font-size:7px;color:var(--ink-4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qsim{display:grid;grid-template-columns:54px minmax(0,1fr);gap:7px;align-items:start}
+  .qp{width:54px}
+  .qp #qpatch{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:3px;background:#fff;image-rendering:pixelated}
+  .simrow{display:grid;grid-template-columns:40px minmax(0,1fr) 30px 30px;gap:5px;align-items:center;font-size:9px;padding:1px 0}
+  .simrow .track{height:5px;border-radius:3px;background:var(--paper-3);overflow:hidden}
+  .simrow .track i{display:block;height:100%;border-radius:3px}
+  .simrow .mono{font-size:8px}
+  .dval.compact4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .dval.compact4>div{padding:5px 6px}
+  .dval.compact4 .k{font-size:6.8px;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dval.compact4 .v{font-size:11.5px;margin-top:1px}
+  .dval.compact4 .v small{font-size:7px;margin-left:1px}
+  .dval.compact4 .s{font-size:7px;line-height:1.3;margin-top:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dval.compact>div{padding:5px 7px}
+  .dval.compact .v{font-size:12px}
+  .dval.compact .s{font-size:8.5px}
+  .dcm{grid-template-columns:40px repeat(5,minmax(0,1fr))}
+  .dcm i{height:12px}
+  .hit{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;padding:5px 0;border-bottom:1px solid var(--line);font-size:10.5px;cursor:pointer}
+  .hit:last-child{border-bottom:0}
+  .hit:hover{background:var(--jade-l)}
+  .hit .d{font-family:var(--mono);font-size:9.5px;color:var(--ink-2)}
+  .hit .m{color:var(--ink-4);font-size:9px;margin-top:1px;line-height:1.45}
+  .callout{border-left:3px solid var(--warn);background:var(--warn-bg);padding:6px 8px;border-radius:0 5px 5px 0;font-size:10px;line-height:1.55;color:var(--ink-2);margin-top:6px}
+  .callout .ci{font-family:var(--mono);font-size:8px;letter-spacing:.08em;color:var(--warn);font-weight:600;margin-right:6px}
+  .dmodel{padding:7px 10px 6px}
+  .dmodel-row{padding:4px 0;font-size:10px}
+  .dmodel-row .k{font-size:7.5px;padding-top:1px}
+  .dmodel-row .v{line-height:1.45}
+  .dtrace{max-height:108px}
+  select.fbsel{font-size:10px;padding:3px 5px;border:1px solid var(--line-2);border-radius:5px;background:var(--card);color:var(--ink-2);max-width:96px}
+  .dctl{padding:8px 12px;gap:12px}
+  .dctl .ctl-s input[type=range]{width:104px}
+  .dctl .seg button{padding:4px 8px;font-size:11px}
+  .dfig .dbar{line-height:1.4}
+  @media(max-width:900px){
+    .left2{grid-template-columns:minmax(0,1fr)}
+    .sig-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .dval.compact4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media(max-width:560px){.sig-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
 
 <div class="dhead">
   <div>
-    <div class="dkick">CASING INSPECTION · 曲线异常检测</div>
-    <h1>16 臂井径 + 成像 → 损伤清单</h1>
-    <p class="lead">左图是合成的多臂井径剖面（16 条曲线叠在一起）与超声展开成像图。算法逐点计算内偏、外扩、椭圆度与中心偏移，
-    用阈值把候选损伤段检出来，再按形态分类，并按壁厚损失率 / 椭圆度 / 中心偏移分级。鼠标在图上移动可以查看该深度的井筒截面。</p>
+    <div class="dkick">CASING INTEGRITY · 采集 → patch → 原型分类 → 复核 → 回写</div>
+    <h1>从 16 臂井径到复核清单</h1>
+    <p class="lead">这不是「看曲线猜损伤」。示范把 2000 m 合成井的 16 臂采集、逐臂偏心/臂差质控、1.2 m 滑窗 patch、5-shot 原型分类的留一井验证、阈值分流与人工回写串成一条可运行的流水线：每一步都能看到模型拿到了什么、算出了什么、为什么这样判，以及什么时候必须交回人。</p>
   </div>
   <div class="dhead-r">
-    <div class="dstat"><div class="k">检出段数</div><div class="v" id="st-n">—</div></div>
-    <div class="dstat good"><div class="k">召回率</div><div class="v" id="st-recall">—</div></div>
-    <div class="dstat warn"><div class="k">误报段数</div><div class="v" id="st-fp">—</div></div>
-    <div class="dstat"><div class="k">复核工时</div><div class="v" id="st-time" style="font-size:12px">—</div></div>
+    <div class="dstat"><div class="k">判定</div><div class="v" id="st-verdict" style="font-size:12px">—</div></div>
+    <div class="dstat good"><div class="k">置信度</div><div class="v" id="st-conf">—</div></div>
+    <div class="dstat"><div class="k">留一井准确率</div><div class="v" id="st-acc">—</div></div>
+    <div class="dstat warn"><div class="k">复核比例</div><div class="v" id="st-review">—</div></div>
   </div>
 </div>
 
 <div class="dctl">
   <div class="grp"><span class="glbl">损伤类型</span><div class="seg" id="seg-type"></div></div>
-  <div class="ctl-s"><label>严重程度</label><input type="range" id="r-sev" min="0" max="1" step="0.05" value="0.55"><output id="o-sev">0.55</output></div>
-  <div class="ctl-s"><label>检测阈值 Δ</label><input type="range" id="r-thr" min="0.8" max="8" step="0.1" value="2.0"><output id="o-thr">2.0 mm</output></div>
+  <div class="ctl-s"><label>严重度</label><input type="range" id="r-sev" min="0" max="1" step="0.05" value="0.55"><output id="o-sev">0.55</output></div>
+  <div class="ctl-s"><label>阈值 Δ</label><input type="range" id="r-thr" min="0.8" max="8" step="0.1" value="2.0"><output id="o-thr">2.0 mm</output></div>
   <label class="tog on" id="tog-noise"><i></i>仪器噪声与偏心</label>
   <span class="sp"></span>
-  <button class="dbtn pri" id="play">▶ 逐段判读</button>
-  <button class="dbtn" id="btn-reset">重置</button>
+  <button class="dbtn pri" id="btn-run" type="button">▶ 运行全流程</button>
+  <button class="dbtn" id="btn-reset" type="button">重置</button>
+</div>
+
+<div class="dflow" id="flow" role="tablist" aria-label="套管损伤智能判读流程">
+  <button type="button" class="on" data-s="0" role="tab" aria-selected="true"><span class="n"><i>01</i>INPUT</span><b>采集与质控</b><span>16 臂井径 + 成像</span></button>
+  <button type="button" data-s="1" role="tab" aria-selected="false"><span class="n"><i>02</i>FEATURE</span><b>模型看到什么</b><span>滑窗 patch + 6 维</span></button>
+  <button type="button" data-s="2" role="tab" aria-selected="false"><span class="n"><i>03</i>MODEL</span><b>小样本原型分类</b><span>5-shot · 留一井</span></button>
+  <button type="button" data-s="3" role="tab" aria-selected="false"><span class="n"><i>04</i>DECISION</span><b>置信度与复核</b><span>阈值 + 拒识 + 分级</span></button>
+  <button type="button" data-s="4" role="tab" aria-selected="false"><span class="n"><i>05</i>LOOP</span><b>回写与价值</b><span>支持集实时更新</span></button>
 </div>
 
 <div class="dgrid c2">
   <div class="dcol">
     <div class="dfig">
-      <div class="dfig-h"><b>多臂井径剖面 · 展开成像</b><span id="cursor-hint">深度 — m</span></div>
+      <div class="dfig-h"><b>多臂井径剖面 · 展开成像</b><span id="cursor-hint">深度 —</span></div>
       <canvas id="log" width="1400" height="940"></canvas>
       <div class="dfig-foot">
         <span><i style="background:#99a3a4"></i>16 臂井径</span>
         <span><i style="background:#1d4e50;height:4px"></i>平均内径</span>
-        <span><i style="background:#123b3a;height:2px"></i>Dmin</span>
-        <span><i style="background:#a86a1f;height:2px"></i>Dmax</span>
         <span><i class="dash"></i>名义内径</span>
-        <span><i style="background:#a64b3c"></i>检出损伤段</span>
-        <span>成像色：青 = 内缩 · 橙 = 外扩（金属损失）</span>
+        <span><i style="background:#a86a1f;height:2px"></i>当前查询窗口</span>
+        <span><i style="background:#6c7872"></i>缺失臂区段</span>
+        <span>成像色：青 = 内缩 · 橙 = 外扩</span>
       </div>
     </div>
-    <div class="dfig" style="margin-top:12px">
-  <div class="dfig-h"><b>四类损伤指纹 · 小多图</b><span>点击卡片切换类型并定位到该段</span></div>
-  <div class="sig-grid" id="sig"></div>
-  <div class="dfig-foot">
-    <span>同一套截面编码：虚线 = 名义内径 · 实线 = 实测 16 臂 · 细线 = 中心偏移</span>
+
+    <div class="left2">
+      <div class="dfig">
+        <div class="dfig-h"><b>井筒截面</b><span id="sect-hint">—</span></div>
+        <div class="sect"><svg id="sect" viewBox="0 0 200 200" role="img" aria-label="井筒截面"></svg></div>
+        <div class="dfig-foot"><span><i class="dash"></i>名义内径</span><span><i style="background:#99a3a4"></i>实测 16 臂</span></div>
+      </div>
+      <div class="dfig">
+        <div class="dfig-h"><b>四类损伤指纹</b><span>点击切换类型并定位</span></div>
+        <div class="sig-grid" id="sig"></div>
+        <div class="dfig-foot"><span>虚线 = 名义内径 · 实线 = 实测 · 橙点 = 中心偏移</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dcol">
+    <div class="dfig dstage on" data-stage="0">
+      <div class="dfig-h"><b>01 · 采集与质量控制</b><span>模型还没开始看曲线</span></div>
+      <p class="dstage-lede">现场先确认这口井的读数<b>能不能用</b>：16 支臂是否都有数、仪器偏心有多大、噪声是否淹没了 1—2 mm 的腐蚀信号。质控先做逐臂中位偏移校正（同时扣掉臂差和偏心），缺失臂用相邻臂插值并记录有效弧覆盖；覆盖不足的 patch 不进自动交付。</p>
+      <div class="qrow"><span class="k">仪器 / 采样</span><span class="v">16 臂井径 + 成像展开 · 0.1 m / 点</span></div>
+      <div class="qrow"><span class="k">井段 / 规格</span><span class="v">0—2000 m · 20000 点 · 5-1/2" 17#（ID 124.0 mm）</span></div>
+      <div class="qrow"><span class="k">仪器偏心</span><span class="v" id="q-ecc">—</span></div>
+      <div class="qrow"><span class="k">噪声残差</span><span class="v" id="q-noise">—</span></div>
+      <div class="qrow"><span class="k">缺失臂</span><span class="v" id="q-miss">—</span></div>
+      <div class="qrow"><span class="k">质控判定</span><span class="v" id="q-gate">—</span></div>
+      <canvas id="qc" width="640" height="150"></canvas>
+      <div class="dfig-foot"><span>红格 = 该深度该臂无读数；缺臂段仍参与成像，但特征按插值降权。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="1">
+      <div class="dfig-h"><b>02 · 模型看到什么</b><span>1.2 m 滑窗 = 12 × 16 patch</span></div>
+      <p class="dstage-lede">沿深度每 0.1 m 滑一个 1.2 m 窗，把 16 臂展开成 <b>12 个深度箱 × 16 臂</b> 的 patch，每个格子先归一化为 <b>r/R0 − 1</b>。再从 patch 抽内偏、外扩、椭圆度、中心偏移、内/外弧覆盖与深度尖锐度；进入原型分类前，16 臂按偏差<b>排序</b>，消除损伤相对仪器臂号的方位差异——模型吃的是有物理含义的形状统计，不是原图。</p>
+      <canvas id="featpatch" width="640" height="200"></canvas>
+      <div id="feats" style="margin-top:6px"></div>
+      <div class="dfig-foot"><span>选这 8 个量不是为了「多」，而是每一种损伤都能在物理上指认：腐蚀看外扩弧、挤压看椭圆度、错断看中心偏移、穿孔看窄而尖。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="2">
+      <div class="dfig-h"><b>03 · 小样本原型分类与留一井验证</b><span>本页现场计算 · 合成支持集</span></div>
+      <p class="dstage-lede">5 类 × 5 个支持 patch → 类内均值 = <b>类原型</b> → 查询 patch 与原型做余弦相似度 → 温度缩放 softmax。验证为<b>留一井</b>：轮流留出一口井的 5 个 patch 做查询，其余 4 口井建原型。</p>
+      <div class="dval compact4" style="margin-bottom:5px">
+        <div><div class="k">留一井验证</div><div class="v ok" id="m-acc">—</div><div class="s">5 折 · 25 patch</div></div>
+        <div><div class="k">温度 T</div><div class="v" id="m-temp">—</div><div class="s">验证 logits 搜索</div></div>
+        <div><div class="k">支持 / 查询</div><div class="v" id="m-n">—</div><div class="s">5 类 × 5 shot</div></div>
+        <div><div class="k">自动覆盖</div><div class="v" id="m-cov">—</div><div class="s">p≥0.75 占比</div></div>
+      </div>
+      <div class="ghrow"><span class="gh">支持样本<br><b id="sup-hint">—</b></span><div class="prow tiny" id="support-row"></div></div>
+      <div class="ghrow"><span class="gh">五类原型<br><span class="gsub">支持 patch 均值</span></span><div class="prow tiny" id="proto-row"></div></div>
+      <div class="ghrow" style="margin-top:5px"><span class="gh">查询 patch</span><span class="gsub" id="query-hint">—</span></div>
+      <div class="qsim">
+        <div class="qp"><canvas id="qpatch" width="60" height="64"></canvas></div>
+        <div id="sims"></div>
+      </div>
+      <div class="dfig-h" style="margin-top:6px"><b>留一井混淆矩阵</b><span>行 = 真实 · 列 = 预测 · 数字 = patch 数</span></div>
+      <div class="dcm" id="cm"></div>
+      <div class="dfig-foot"><span>合成支持/查询集现场计算；概率经温度缩放 + 2% 平滑（上限 98%）。混淆矩阵中 1 例轻度腐蚀被判成正常，就是当前失败边界。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="3">
+      <div class="dfig-h"><b>04 · 置信度、分流与复核队列</b><span>模型输出如何变成动作</span></div>
+      <p class="dstage-lede"><b>p ≥ 0.75 且次优差 ≥ 12 pts</b> 自动交付；<b>0.55—0.75</b> 复核；<b>p &lt; 0.55 或差距 &lt; 8 pts</b> 拒识；缺臂 patch 降级。Δ 决定候选，原型决定哪些候选值得看。</p>
+      <div id="probs"></div>
+      <div id="advice" style="margin-top:9px"></div>
+      <div class="dfig-h" style="margin-top:9px"><b>人工复核队列</b><span id="queue-hint">—</span></div>
+      <div id="queue"></div>
+      <div class="dfig-h" style="margin-top:9px"><b>候选段合并与分流</b><span>拖动 Δ 实时联动</span></div>
+      <div id="flowstat"></div>
+      <div class="dfig-foot"><span>低阈值时接箍/结垢会进候选；正常高置信自动排除，低置信假候选仍占复核队列。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="4">
+      <div class="dfig-h"><b>05 · 回写与价值</b><span>人工确认之后发生什么</span></div>
+      <p class="dstage-lede">AI 的价值不是替代解释员，而是把「全井逐段看」变成「先看复核队列」。人工确认或纠正后，patch 加入对应类的支持集，<b>类原型当场重算</b>；验证集不自动重跑，下一轮要用新的留出井复验。</p>
+      <div class="dfig-h" style="margin-bottom:3px"><b>案例口径 · 620 井次/年</b><span>现场复评统计，不是本页实测</span></div>
+      <div class="dval compact" style="margin-bottom:6px">
+        <div><div class="k">单井判读</div><div class="v">45 → 12 min</div><div class="s">人工逐段 vs 清单确认</div></div>
+        <div><div class="k">年检测量</div><div class="v">620 井次</div><div class="s">案例设定口径</div></div>
+        <div><div class="k">损伤召回</div><div class="v ok">78% → 96%</div><div class="s">抽检基线 vs 全检</div></div>
+        <div><div class="k">单井误报</div><div class="v ok">2.8 → 1.2 段</div><div class="s">需人工排除的假候选</div></div>
+      </div>
+      <div class="dfig-h" style="margin-bottom:3px"><b>本页实测 · 合成单井</b><span>随阈值/严重度实时变化</span></div>
+      <div class="dval compact" id="live-stats"></div>
+      <div class="dfeed" id="feedback" style="margin-top:9px">
+        <button class="dbtn" type="button" data-fb="ok">✓ 确认当前判断</button>
+        <select class="fbsel" id="fb-class" aria-label="纠正类型"></select>
+        <button class="dbtn" type="button" data-fb="fix">✗ 纠正并回写</button>
+        <span class="dfeed-note" id="fb-note">—</span>
+      </div>
+      <div class="dfig-foot"><span>回写会立即改变类原型（页面上的概率/相似度随之变化）；留一井验证指标保持原值，直到下一轮用新留出井重跑——这是示范页刻意保留的边界。</span></div>
+    </div>
+
+    <div class="dmodel">
+      <div class="dmodel-h"><b>模型档案</b><span class="db plain" id="m-badge">已建原型</span></div>
+      <div class="dmodel-row"><span class="k">任务</span><span class="v">5 类 patch 分类 + 未知拒识 + 严重度分级</span></div>
+      <div class="dmodel-row"><span class="k">支持集</span><span class="v" id="m-sup">—</span></div>
+      <div class="dmodel-row"><span class="k">特征 / 模型</span><span class="v">12×16 patch → 40 维（16 臂排序均值 + 16 臂深度差 + 7 摘要 + 1 背景维）· 类原型 + 余弦 + 温度 softmax</span></div>
+      <div class="dmodel-row"><span class="k">验证</span><span class="v" id="m-summary">—</span></div>
+      <div class="dmodel-row"><span class="k">边界</span><span class="v">缺臂/偏心段降级；腐蚀坑 vs 宽穿孔看深度宽度与弧覆盖。</span></div>
+    </div>
+
+    <div class="dfig" style="padding-top:8px">
+      <div class="dfig-h"><b>过程日志</b><span>每一步都可追溯</span></div>
+      <div class="dtrace" id="trace"></div>
+    </div>
   </div>
 </div>
 
 <p class="dnote" id="note"></p>
-  </div>
-
-  <div class="dcol">
-    <div class="dfig">
-      <div class="dfig-h"><b>井筒截面</b><span id="sect-hint">— m</span></div>
-      <div class="sect"><svg id="sect" viewBox="0 0 200 200" role="img" aria-label="井筒截面"></svg></div>
-      <div class="dfig-foot">
-        <span><i class="dash"></i>名义内径</span>
-        <span><i style="background:#99a3a4"></i>实测 16 臂</span>
-      </div>
-    </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>检出清单</b><span>按峰值偏差排序</span></div>
-      <div id="hits"></div>
-    </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>特征与判据</b><span>当前阈值下的统计</span></div>
-      <div id="feats"></div>
-    </div>
-  </div>
-</div>
 
 <script src="demo.js"></script>
 </body>

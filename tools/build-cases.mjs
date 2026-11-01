@@ -199,7 +199,7 @@ let indexHTML = fs.readFileSync(INDEX, 'utf8');
 const BEGIN = '<!-- CASES:BEGIN （本区块由 tools/build-cases.mjs 生成，勿手改） -->';
 const END = '<!-- CASES:END -->';
 const block = BEGIN + '\n' +
-  pkgs.map((id) => `<script src="assets/cases/${id}.case.js?v=20261030g"></script>`).join('\n') +
+  pkgs.map((id) => `<script src="assets/cases/${id}.case.js?v=20261101b"></script>`).join('\n') +
   '\n' + END;
 const re = new RegExp(BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s\\S]*?' + END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 if (re.test(indexHTML)) {

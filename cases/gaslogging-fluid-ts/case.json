@@ -4,34 +4,34 @@
   "methods": [
     "ts"
   ],
-  "title": "气测异常智能解释：基线校正 + Pixler 图版判别",
-  "version": "1.0.0",
-  "updated": "2026-10-23",
+  "title": "气测异常解释：从全烃曲线到流体性质",
+  "version": "2.0.0",
+  "updated": "2026-11-01",
   "status": "ready",
   "tabs": {
     "background": {
       "label": "专业背景",
-      "lede": "气测录井在钻井液返出的气体里连续测全烃与 C1—C5 组分，是发现油气显示最快的手段：钻头刚揭开储层，几米之内曲线就抬起来。解释员要干两件事——把被背景气、接单根气搅乱的曲线切成一段段异常，再按组分比判断哪段是油层、气层、水层。本案例把这两件事都写成可复核的算法：先减掉背景气基线，再用峰高与持续长度提异常，最后落到 Pixler 图版上读结论。",
+      "lede": "气测录井在钻井液返出的气体里连续测全烃与 C1—C5 组分，是发现油气显示最快的手段：钻头刚揭开储层，几米之内曲线就抬起来。解释员要干两件事——先把被背景气、接单根气搅乱的曲线切成一段段异常，再按组分比与窗口形态判断气层、油层、水层还是干层。本案例把这两件事写成一条五段可运行的作业流：质控 → 基线校正 → 8 维窗口特征 → 现场训练的 softmax 四分类 → Pixler 图版交叉验证与人工回写；每一步都能看到输入、输出和失败边界。",
       "judge": [
         {
           "label": "任务类型",
-          "value": "异常检测 + 三分类",
-          "desc": "先分段（时序检测），再定性（组分比图版）"
+          "value": "时序分段 + 四分类 + 物理互校",
+          "desc": "先检出异常段，再判气 / 油 / 水 / 干层，最后与 Pixler 图版互校；不是端到端黑箱"
         },
         {
           "label": "数据门槛",
-          "value": "1—5 m 一点",
-          "desc": "全烃与 C1—C5 组分曲线，配钻井液密度、排量、钻时；异常段标签 200—500 段"
+          "value": "1—5 m 一点 · 18 口井",
+          "desc": "全烃、C1—C5、钻时、钻井液与工况参数，加 312 段人工解释标签；试油验证是真值——不是只靠曲线截图就能训练"
         },
         {
           "label": "可见收益",
-          "value": "2 h → 12 min",
-          "desc": "单井气测解释工时，且口径统一、随钻不漏报"
+          "value": "3 天 → 4 h",
+          "desc": "单井从资料到解释报告；解释一致性 72% → 91%，漏解释油层 9 段 → 2 段（示范口径）——不是本页模型在 312 段上的实测收益"
         },
         {
           "label": "难度",
           "value": "中",
-          "desc": "方法成熟，卡点在干扰压制与真值（只能靠试油验证）",
+          "desc": "检测与 softmax 都成熟，难在四类边界、干扰压制与真值稀缺——不是换个更大的模型就能解决",
           "html": "<span class='dtag' data-d='中'>难度 中</span>"
         }
       ],
@@ -40,25 +40,25 @@
           "no": 1,
           "en": "PROBLEM",
           "title": "当前做法与问题",
-          "html": "<p>气测解释的第一步是<b>分段</b>：在 1—5 m 一点的全烃曲线上圈出「有油气显示」的井段；第二步是<b>定性</b>：看这一段的气体「湿不湿」，判断是油层、气层还是水层。这两步现在全靠解释员坐在屏幕前一遍遍地看曲线，一口井 3000—4000 m 的井段通常要 2 h 以上。</p><p>麻烦在于曲线从来不干净。同一段实测曲线上至少叠了三种成分：<b>背景气</b>（钻井液里的残余气与脱气效率漂移，让整条曲线随井深缓慢抬升）、<b>接单根气</b>（停泵接单根后恢复循环时冒出来的窄尖峰）、<b>油气显示</b>（真正的储层贡献）。三者的峰值可以一样高，形态却完全不同——而薄油气层的显示常常比背景气还低，一不小心就漏掉。更要命的是<b>没有真值</b>：一口井解释成油层还是气层，只能等试油或投产来验证，一个区块攒 200—500 段标签要几年。</p><div class='figure'><svg viewBox='0 0 660 210' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='气测全烃曲线里叠加的三种成分'><text x='34' y='23' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>全烃 %</text><rect x='34' y='30' width='400' height='120' rx='5' fill='#fdfcf9' stroke='#e3dccd'/><path d='M42 138.0 L426 130.0' stroke='#a9742c' stroke-width='1.3' stroke-dasharray='5 4' fill='none'/><path d='M42 137.77 L46 136.18 L58 138.17 L66 135.69 L68 127.58 L70 117.73 L74 137.22 L76 139.06 L90 136.08 L94 136.97 L96 132.95 L98 119.95 L100 110.19 L102 119.52 L104 131.53 L106 134.83 L114 137.42 L122 137.18 L126 135.66 L138 136.93 L144 134.46 L150 126.86 L152 125.01 L158 122.13 L162 119.07 L170 116.26 L174 117.33 L184 115.03 L188 113.46 L200 115.11 L206 113.37 L218 116.8 L224 115.91 L232 118 L238 122.95 L242 125.57 L248 132.09 L250 132.09 L254 133.94 L262 134.55 L268 132.77 L280 134.26 L286 131.7 L294 131.72 L298 132.54 L300 130.33 L302 124.86 L304 115.71 L308 91.94 L310 86.78 L312 91.73 L316 117.22 L318 126.07 L320 130.42 L322 132.28 L324 132.76 L330 130.78 L342 132.1 L348 130.23 L356 131.63 L360 133.1 L370 130.51 L378 127.35 L382 124.85 L390 126.77 L396 130.49 L404 131.39 L408 129.89 L422 131.54 L426 129.5' fill='none' stroke='#4a585c' stroke-width='1.4'/><rect x='42' y='42' width='384' height='100' fill='none'/><text x='85' y='104' font-size='9' fill='#355c74' text-anchor='middle'>接单根气</text><text x='196' y='108' font-size='9' fill='#83551f' text-anchor='middle'>油层 · 宽而平</text><text x='310' y='76' font-size='9' fill='#123a3d' text-anchor='middle'>气层 · 窄而尖</text><text x='382' y='114' font-size='9' fill='#a64b3c' text-anchor='middle'>薄层被掩盖</text><text x='426' y='146' font-size='9' fill='#83551f' text-anchor='end'>背景气抬升</text><text x='100' y='164' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>3520</text><text x='200' y='164' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>3620</text><text x='300' y='164' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>3720</text><text x='400' y='164' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>3820</text><text x='34' y='164' font-size='9' font-family='monospace' fill='#99a3a4'>井深 m</text><rect x='446' y='30' width='200' height='40' rx='5' fill='#faf7f0' stroke='#cdd8e2'/><text x='459' y='47' font-size='10.5' font-weight='600' fill='#123a3d'>背景气</text><text x='459' y='61' font-size='9' fill='#6f7a7c'>随钻井液密度、脱气效率慢漂移</text><rect x='446' y='78' width='200' height='40' rx='5' fill='#e5ebf0' stroke='#cdd8e2'/><text x='459' y='95' font-size='10.5' font-weight='600' fill='#355c74'>接单根气</text><text x='459' y='109' font-size='9' fill='#6f7a7c'>停泵—开泵的窄尖峰，周期性出现</text><rect x='446' y='126' width='200' height='40' rx='5' fill='#f4e8d4' stroke='#e3d2b0'/><text x='459' y='143' font-size='10.5' font-weight='600' fill='#83551f'>油气显示</text><text x='459' y='157' font-size='9' fill='#6f7a7c'>油宽平 · 气窄尖 · 水低而钝</text><text x='34' y='190' font-size='10' fill='#4a585c'>实测曲线 = 三者叠加：分段与定性都不能只看单点峰高</text><text x='34' y='204' font-size='9.5' fill='#99a3a4'>图中虚线是真背景气（实际解释时并不知道，要自己估）</text></svg></div><div class='figcap'><b>图 1</b><span>气测解释难在哪：<b>背景气抬升</b>会跟着钻具一直漂，<b>接单根气</b>是准时来报到的窄尖峰，真正的<b>油气显示</b>形态各异（油层宽而平、气层窄而尖、水层低而钝），最右侧那个比背景气高不了多少的小鼓包就是薄层显示——单点阈值法必然漏掉它。</span></div>"
+          "html": "<p>气测解释的第一步是<b>分段</b>：在 1—5 m 一点的全烃曲线上圈出「有油气显示」的井段；第二步是<b>定性</b>：看这一段的气体「湿不湿」，判断是气层、油层、水层还是干层。这两步现在全靠解释员坐在屏幕前一遍遍地看曲线；从完井气测资料到解释报告签发，单井通常要 3 天，真正花在曲线上的时间只是一部分，更多耗在资料对齐、复核和跨专业确认上。</p><p>麻烦在于曲线从来不干净。同一段实测曲线上至少叠了三种成分：<b>背景气</b>（钻井液里的残余气与脱气效率漂移，让整条曲线随井深缓慢抬升）、<b>接单根气</b>（停泵接单根后恢复循环时冒出来的窄尖峰）、<b>油气显示</b>（真正的储层贡献）。三者的峰值可以一样高，形态却完全不同——而薄油气层的显示常常比背景气还低，一不小心就漏掉。更要命的是<b>没有真值</b>：一口井解释成油层还是气层，只能等试油或投产来验证，一个区块攒 312 个显示段标签要几年。</p><div class='figure'><svg viewBox='0 0 660 210' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='气测全烃曲线里叠加的三种成分'><text x='34' y='23' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>全烃 %</text><rect x='34' y='30' width='400' height='120' rx='5' fill='#fdfcf9' stroke='#e3dccd'/><path d='M42 138.0 L426 130.0' stroke='#a9742c' stroke-width='1.3' stroke-dasharray='5 4' fill='none'/><path d='M42 137.77 L46 136.18 L58 138.17 L66 135.69 L68 127.58 L70 117.73 L74 137.22 L76 139.06 L90 136.08 L94 136.97 L96 132.95 L98 119.95 L100 110.19 L102 119.52 L104 131.53 L106 134.83 L114 137.42 L122 137.18 L126 135.66 L138 136.93 L144 134.46 L150 126.86 L152 125.01 L158 122.13 L162 119.07 L170 116.26 L174 117.33 L184 115.03 L188 113.46 L200 115.11 L206 113.37 L218 116.8 L224 115.91 L232 118 L238 122.95 L242 125.57 L248 132.09 L250 132.09 L254 133.94 L262 134.55 L268 132.77 L280 134.26 L286 131.7 L294 131.72 L298 132.54 L300 130.33 L302 124.86 L304 115.71 L308 91.94 L310 86.78 L312 91.73 L316 117.22 L318 126.07 L320 130.42 L322 132.28 L324 132.76 L330 130.78 L342 132.1 L348 130.23 L356 131.63 L360 133.1 L370 130.51 L378 127.35 L382 124.85 L390 126.77 L396 130.49 L404 131.39 L408 129.89 L422 131.54 L426 129.5' fill='none' stroke='#4a585c' stroke-width='1.4'/><rect x='42' y='42' width='384' height='100' fill='none'/><text x='85' y='104' font-size='9' fill='#355c74' text-anchor='middle'>接单根气</text><text x='196' y='108' font-size='9' fill='#83551f' text-anchor='middle'>油层 · 宽而平</text><text x='310' y='76' font-size='9' fill='#123a3d' text-anchor='middle'>气层 · 窄而尖</text><text x='382' y='114' font-size='9' fill='#a64b3c' text-anchor='middle'>薄层被掩盖</text><text x='426' y='146' font-size='9' fill='#83551f' text-anchor='end'>背景气抬升</text><text x='100' y='164' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>3520</text><text x='200' y='164' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>3620</text><text x='300' y='164' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>3720</text><text x='400' y='164' font-size='9' font-family='monospace' fill='#99a3a4' text-anchor='middle'>3820</text><text x='34' y='164' font-size='9' font-family='monospace' fill='#99a3a4'>井深 m</text><rect x='446' y='30' width='200' height='40' rx='5' fill='#faf7f0' stroke='#cdd8e2'/><text x='459' y='47' font-size='10.5' font-weight='600' fill='#123a3d'>背景气</text><text x='459' y='61' font-size='9' fill='#6f7a7c'>随钻井液密度、脱气效率慢漂移</text><rect x='446' y='78' width='200' height='40' rx='5' fill='#e5ebf0' stroke='#cdd8e2'/><text x='459' y='95' font-size='10.5' font-weight='600' fill='#355c74'>接单根气</text><text x='459' y='109' font-size='9' fill='#6f7a7c'>停泵—开泵的窄尖峰，周期性出现</text><rect x='446' y='126' width='200' height='40' rx='5' fill='#f4e8d4' stroke='#e3d2b0'/><text x='459' y='143' font-size='10.5' font-weight='600' fill='#83551f'>油气显示</text><text x='459' y='157' font-size='9' fill='#6f7a7c'>油宽平 · 气窄尖 · 水低而钝</text><text x='34' y='190' font-size='10' fill='#4a585c'>实测曲线 = 三者叠加：分段与定性都不能只看单点峰高</text><text x='34' y='204' font-size='9.5' fill='#99a3a4'>图中虚线是真背景气（实际解释时并不知道，要自己估）</text></svg></div><div class='figcap'><b>图 1</b><span>气测解释难在哪：<b>背景气抬升</b>会跟着钻具一直漂，<b>接单根气</b>是准时来报到的窄尖峰，真正的<b>油气显示</b>形态各异（油层宽而平、气层窄而尖、水层低而钝），最右侧那个比背景气高不了多少的小鼓包就是薄层显示——单点阈值法必然漏掉它。</span></div>"
         },
         {
           "no": 2,
           "en": "INTERVENTION",
-          "title": "AI 能做什么",
-          "html": "<p>这里不做端到端黑箱，而是把解释员脑子里的三步判断写成可复算的算法：</p><p><b>① 基线校正</b>——用<b>滑动分位数</b>估计背景气：以当前点为中心取一个窗口（例如 40 点 ≈ 100 m），取窗口内 20% 分位数作为这一点的基线，实测曲线减基线得到校正曲线。用分位数而不用滑动平均，是因为分位数对「少数几个高值」不敏感：接单根窄峰不会把基线抬起来，也就不会被自己减掉。</p><p><b>② 异常段检测</b>——在校正曲线上先用<b>峰高</b>判据（校正值 &gt; k × 噪声 σ，σ 用中位数绝对偏差 MAD 估计）找候选点，再用<b>持续长度</b>判据（连续 ≥ 3 个点）把接单根那样的孤立窄峰筛掉，最后合并邻近段。峰高与长度必须同时用：只用峰高，接单根气全部算异常；只用长度，一整段背景漂移都是异常。</p><p><b>③ 流体性质判别</b>——把每个异常段的组分比（<b>C1/C2</b>、<b>C1/C3</b>，取峰区加权中位数）打到 <b>Pixler 双对数图版</b>上：比值小、重烃全 → 油区；比值中等、几乎是干气 → 气区；比值极大、幅度又低 → 水区。图版不是拍脑袋画的，落区边界来自本区已试油验证的井段统计。</p><div class='figure'><svg viewBox='0 0 660 210' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='基线校正与四步解释流程'><defs><marker id='ga2' markerWidth='7' markerHeight='7' refX='6' refY='3' orient='auto'><path d='M0 0 L6 3 L0 6 Z' fill='#c3cdc4'/></marker></defs><rect x='12' y='18' width='636' height='54' rx='5' fill='#fdfcf9' stroke='#e3dccd'/><path d='M22 62.0 L632 58.0' stroke='#a9742c' stroke-width='1.2' stroke-dasharray='5 4' fill='none'/><path d='M22 61.86 L25 62.1 L28 61.39 L31 60.84 L34 61.96 L37 62.64 L40 62.13 L43 62.34 L46 62.44 L49 61.17 L52 60.75 L55 61.7 L58 61.81 L61 61.73 L64 62.66 L67 62.54 L70 61.2 L73 61.07 L76 61.44 L79 60.95 L82 61.37 L85 62.61 L88 62.05 L91 55.74 L94 58.55 L97 61.19 L100 60.36 L103 61.11 L106 62.17 L109 61.81 L112 61.74 L115 62.11 L118 61.1 L121 60.2 L124 60.99 L127 61.44 L130 61.18 L133 61.94 L136 62.31 L139 61.07 L142 60.49 L145 60.97 L148 60.53 L151 55.96 L154 59.69 L157 62.09 L160 61.11 L163 61.06 L166 61.01 L169 60.03 L172 60.29 L175 61.57 L178 61.52 L181 61.18 L184 61.64 L187 61.03 L190 59.81 L193 60.24 L196 60.99 L199 60.74 L202 61.19 L205 61.94 L208 61 L211 60.02 L214 60.41 L217 60.35 L220 60.01 L223 61.09 L226 61.79 L229 60.89 L232 60.52 L235 60.69 L238 59.82 L241 59.57 L244 60.83 L247 61.21 L250 60.71 L253 61.07 L256 60.9 L259 59.58 L262 59.51 L265 60.45 L268 60.36 L271 60.49 L274 61.41 L277 60.93 L280 59.67 L283 59.8 L286 58.07 L289 55.1 L292 53.83 L295 53.36 L298 51.54 L301 49.92 L304 49.49 L307 48.41 L310 47.41 L313 48.23 L316 48.92 L319 48.37 L322 48.47 L325 48.66 L328 47.46 L331 46.87 L334 47.8 L337 48.02 L340 47.89 L343 48.83 L346 48.97 L349 47.81 L352 47.82 L355 48.66 L358 48.81 L361 49.91 L364 52.3 L367 53.59 L370 54.49 L373 56.92 L376 59.48 L379 58.55 L382 59.16 L385 60.31 L388 60.03 L391 59.87 L394 60.28 L397 59.39 L400 58.38 L403 59.07 L406 59.62 L409 59.35 L412 60.02 L415 60.53 L418 59.35 L421 58.64 L424 59.12 L427 58.86 L430 58.73 L433 59.97 L436 60.33 L439 59.34 L442 59.2 L445 59.23 L448 58.27 L451 58.37 L454 59.66 L457 59.71 L460 58.86 L463 56.12 L466 45.6 L469 33.05 L472 36.16 L475 49.58 L478 56.92 L481 59.07 L484 60.09 L487 59.29 L490 58.21 L493 58.54 L496 58.56 L499 58.16 L502 59.14 L505 59.98 L508 59.15 L511 58.67 L514 58.88 L517 58.08 L520 57.68 L523 58.89 L526 59.41 L529 58.89 L532 59.2 L535 59.15 L538 57.83 L541 57.58 L544 58.39 L547 57.91 L550 56.96 L553 56.7 L556 55.81 L559 55.07 L562 56.29 L565 57.56 L568 57.54 L571 58.26 L574 59.47 L577 58.99 L580 58.2 L583 58.43 L586 57.92 L589 57.14 L592 58.06 L595 58.99 L598 58.54 L601 58.58 L604 58.87 L607 57.74 L610 57.01 L613 57.89 L616 58.21 L619 58 L622 58.84 L625 59.04 L628 57.73 L631 57.32' fill='none' stroke='#99a3a4' stroke-width='1.3'/><text x='22' y='32' font-size='9.5' fill='#6f7a7c'>实测全烃（灰） + 估计的基线（虚线）</text><rect x='12' y='76' width='636' height='54' rx='5' fill='#faf7f0' stroke='#c8d9d1'/><path d='M22 122 L632 122' stroke='#1d4e50' stroke-width='1' stroke-dasharray='3 3' fill='none'/><path d='M22 110 L632 110' stroke='#a64b3c' stroke-width='1' stroke-dasharray='4 3' fill='none'/><text x='630' y='107' font-size='9' fill='#a64b3c' text-anchor='end'>检出阈值</text><path d='M22 121.74 L25 122 L28 120.92 L31 119.9 L34 122 L37 122 L40 122 L43 122 L46 122 L49 120.76 L52 120 L55 121.84 L58 122 L61 121.98 L64 122 L67 122 L70 121.08 L73 120.86 L76 121.61 L79 120.72 L82 121.55 L85 122 L88 122 L91 110.96 L94 116.33 L97 121.39 L100 119.85 L103 121.33 L106 122 L109 122 L112 122 L115 122 L118 121.48 L121 119.82 L124 121.35 L127 122 L130 121.79 L133 122 L136 122 L139 121.68 L142 120.63 L145 121.58 L148 120.77 L151 112.12 L154 119.26 L157 122 L160 122 L163 121.98 L166 121.91 L169 120.09 L172 120.63 L175 122 L178 122 L181 122 L184 122 L187 122 L190 119.94 L193 120.78 L196 122 L199 121.81 L202 122 L205 122 L208 122 L211 120.59 L214 121.38 L217 121.29 L220 120.69 L223 122 L226 122 L229 122 L232 121.8 L235 122 L238 120.55 L241 120.11 L244 122 L247 122 L250 122 L253 122 L256 122 L259 120.35 L262 120.26 L265 122 L268 121.95 L271 122 L274 122 L277 122 L280 120.79 L283 121.08 L286 117.81 L289 112.22 L292 109.85 L295 108.98 L298 105.56 L301 102.53 L304 101.74 L307 99.72 L310 97.87 L313 99.47 L316 100.82 L319 99.81 L322 100.04 L325 100.44 L328 98.18 L331 97.11 L334 98.9 L337 99.36 L340 99.15 L343 100.97 L346 101.28 L349 99.11 L352 99.17 L355 100.81 L358 101.12 L361 103.26 L364 107.83 L367 110.31 L370 112.07 L373 116.72 L376 121.62 L379 119.9 L382 121.1 L385 122 L388 122 L391 122 L394 122 L397 121.72 L400 119.82 L403 121.18 L406 122 L409 121.78 L412 122 L415 122 L418 121.9 L421 120.59 L424 121.53 L427 121.08 L430 120.88 L433 122 L436 122 L439 122 L442 121.92 L445 122 L448 120.22 L451 120.44 L454 122 L457 122 L460 121.49 L463 116.32 L466 96.38 L469 76 L472 78.52 L475 104.05 L478 118.02 L481 122 L484 122 L487 122 L490 120.62 L493 121.29 L496 121.37 L499 120.64 L502 122 L505 122 L508 122 L511 121.76 L514 122 L517 120.71 L520 120 L523 122 L526 122 L529 122 L532 122 L535 122 L538 120.51 L541 120.07 L544 121.64 L547 120.78 L550 119.01 L553 118.54 L556 116.89 L559 115.53 L562 117.88 L565 120.34 L568 120.32 L571 121.74 L574 122 L577 122 L580 121.74 L583 122 L586 121.27 L589 119.84 L592 121.61 L595 122 L598 122 L601 122 L604 122 L607 121.2 L610 119.85 L613 121.55 L616 122 L619 121.84 L622 122 L625 122 L628 121.43 L631 120.7' fill='none' stroke='#1d4e50' stroke-width='1.6'/><text x='22' y='90' font-size='9.5' fill='#123a3d'>校正后：背景气归零，异常段凸出来</text><rect x='12' y='138' width='144' height='58' rx='6' fill='#faf7f0' stroke='#cdd8e2'/><text x='24' y='156' font-size='10' font-weight='600' fill='#123a3d'>① 基线校正</text><text x='24' y='171' font-size='9' fill='#6f7a7c'>滑动 20 点 · 20% 分位</text><text x='24' y='184' font-size='9' fill='#6f7a7c'>校正值 = 实测 − 基线</text><rect x='174' y='138' width='148' height='58' rx='6' fill='#e5ebf0' stroke='#cdd8e2'/><text x='186' y='156' font-size='10' font-weight='600' fill='#355c74'>② 异常段提取</text><text x='186' y='171' font-size='9' fill='#6f7a7c'>校正值 &gt; k·σ 且</text><text x='186' y='184' font-size='9' fill='#6f7a7c'>连续 ≥ 3 个采样点</text><rect x='340' y='138' width='144' height='58' rx='6' fill='#f4e8d4' stroke='#e3d2b0'/><text x='352' y='156' font-size='10' font-weight='600' fill='#83551f'>③ 组分比</text><text x='352' y='171' font-size='9' fill='#6f7a7c'>C1/C2 · C1/C3</text><text x='352' y='184' font-size='9' fill='#6f7a7c'>取峰区加权中位数</text><rect x='502' y='138' width='146' height='58' rx='6' fill='#e7eee9' stroke='#c8dbd2'/><text x='514' y='156' font-size='10' font-weight='600' fill='#123a3d'>④ Pixler 图版</text><text x='514' y='171' font-size='9' fill='#6f7a7c'>双对数落点分区</text><text x='514' y='184' font-size='9' fill='#6f7a7c'>油区 / 气区 / 水区</text><path d='M158 167 L170 167' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#ga2)'/><path d='M324 167 L336 167' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#ga2)'/><path d='M486 167 L498 167' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#ga2)'/><text x='12' y='205' font-size='9.5' fill='#99a3a4'>四步全部可复算：换窗口、换阈值、换方法，落点与结论立刻跟着变</text></svg></div><div class='figcap'><b>图 2</b><span>算法的四步：先估背景气基线（虚线）并减掉，再要求「峰高够 + 持续够」才算异常段，然后算段内组分比，最后把点打到 Pixler 图版上读结论。<b>校正前后并排看最直观</b>——上图里被背景气抬着走的曲线，下图一减就只剩几个凸起的异常段。</span></div>"
+          "title": "五段 AI 作业流",
+          "html": "<p>这里不做端到端黑箱，而是把解释员脑子里的判断拆成五段可复算的作业流。每一段都有明确的输入、输出和失败边界，后一段只吃前一段的结果：</p>\n<p><b>01 采集与质控</b>——按迟到时间把录井仪的时间轴换算到深度轴，与全烃、C1—C5、钻时、钻井液密度、排量、接单根记录对齐；先看噪声、背景漂移、脱气器效率与窄尖峰，不合格的资料退回或降级使用，不拿噪声训练模型。</p>\n<p><b>02 基线校正</b>——用<b>滑动分位数</b>估计背景气：窗口内 20% 分位对少数高值不敏感，接单根窄峰不会把基线抬起来。实测减基线得到校正曲线，再用<b>峰高 k·σ + 持续长度</b>双判据分段；峰高与长度必须同时用，否则接单根气全部算异常，或整段背景漂移都算异常。</p>\n<p><b>03 特征与样本</b>——每个候选段取一个窗口，算 <b>峰基比、C1/C2、C1/C3、湿度比、平衡比、字符比、持续长度、上升斜率</b> 8 个有物理含义的量。用 18 口合成井、每类 180 个窗口共 720 个样本训练；本井曲线只做推理，不参与训练，避免井级泄漏。</p>\n<p><b>04 模型</b>——8 维特征标准化后训练 <b>softmax 回归</b>：标签平滑 0.012 抑制过置信，L2 控制权重，温度缩放在校准集上拟合；按井分层留出 576 训练 / 72 校准 / 72 测试，输出损失曲线、混淆矩阵、四类概率和特征贡献。概率显示截断在 0.1%—99.9%，避免 softmax 浮点饱和显示成 100%。</p>\n<p><b>05 决策与闭环</b>——先把同类相邻候选段聚合，再用 <b>Pixler 图版</b>做物理交叉验证：模型与图版一致且概率/差距过线才自动写入解释报告；冲突、图版外或低置信度一律转人工复核，人工确认结果回写样本库，下一轮重训纳入。价值按 18 口井 / 312 个显示段的示范口径核算。</p>\n<div class='figure'><svg viewBox='0 0 660 192' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='气测异常解释五段作业流'><defs><marker id='g5a' markerWidth='7' markerHeight='7' refX='6' refY='3' orient='auto'><path d='M0 0 L6 3 L0 6 Z' fill='#c3cdc4'/></marker></defs><rect x='10' y='24' width='118' height='64' rx='6' fill='#fdfcf9' stroke='#e3dccd'/><text x='22' y='41' font-size='8.5' font-family='monospace' fill='#99a3a4'>01 INPUT</text><text x='22' y='57' font-size='11' font-weight='600' fill='#123a3d'>采集与质控</text><text x='22' y='72' font-size='8.2' fill='#6f7a7c'>全烃 / C1—C5 / 钻时</text><text x='22' y='83' font-size='8.2' fill='#6f7a7c'>迟到时间 · 脱气效率</text><rect x='140' y='24' width='118' height='64' rx='6' fill='#faf7f0' stroke='#c8d9d1'/><text x='152' y='41' font-size='8.5' font-family='monospace' fill='#99a3a4'>02 BASELINE</text><text x='152' y='57' font-size='11' font-weight='600' fill='#123a3d'>基线校正</text><text x='152' y='72' font-size='8.2' fill='#6f7a7c'>滑动分位数 · 20%</text><text x='152' y='83' font-size='8.2' fill='#6f7a7c'>峰高 k·σ + 持续长度</text><rect x='270' y='24' width='118' height='64' rx='6' fill='#e5ebf0' stroke='#cdd8e2'/><text x='282' y='41' font-size='8.5' font-family='monospace' fill='#99a3a4'>03 FEATURE</text><text x='282' y='57' font-size='11' font-weight='600' fill='#123a3d'>特征与样本</text><text x='282' y='72' font-size='8.2' fill='#6f7a7c'>8 维窗口特征</text><text x='282' y='83' font-size='8.2' fill='#6f7a7c'>18 井 × 40 = 720</text><rect x='400' y='24' width='118' height='64' rx='6' fill='#e7eee9' stroke='#c8dbd2'/><text x='412' y='41' font-size='8.5' font-family='monospace' fill='#99a3a4'>04 MODEL</text><text x='412' y='57' font-size='11' font-weight='600' fill='#123a3d'>四类模型</text><text x='412' y='72' font-size='8.2' fill='#6f7a7c'>softmax 回归</text><text x='412' y='83' font-size='8.2' fill='#6f7a7c'>576/72/72 · T 校准</text><rect x='530' y='24' width='118' height='64' rx='6' fill='#f4e8d4' stroke='#e3d2b0'/><text x='542' y='41' font-size='8.5' font-family='monospace' fill='#99a3a4'>05 DECISION</text><text x='542' y='57' font-size='11' font-weight='600' fill='#83551f'>决策与闭环</text><text x='542' y='72' font-size='8.2' fill='#6f7a7c'>段聚合 · Pixler 交叉</text><text x='542' y='83' font-size='8.2' fill='#6f7a7c'>置信分级 · 人工回写</text><path d='M128 56 L136 56' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#g5a)'/><path d='M258 56 L266 56' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#g5a)'/><path d='M388 56 L396 56' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#g5a)'/><path d='M518 56 L526 56' stroke='#c3cdc4' stroke-width='1.3' marker-end='url(#g5a)'/><rect x='10' y='106' width='638' height='52' rx='5' fill='#fdfcf9' stroke='#e3dccd'/><text x='22' y='123' font-size='9' fill='#4a585c'>质控：噪声/漂移/尖峰不合格 → 退回</text><text x='232' y='123' font-size='9' fill='#4a585c'>物理交叉：模型四类 vs Pixler 三区</text><text x='450' y='123' font-size='9' fill='#4a585c'>人工回写：试油/复核结果入库</text><text x='22' y='140' font-size='8.5' fill='#99a3a4'>改基线方法 → 02 校正变 → 04 概率变 → 05 结论变；每一段都可复算</text><text x='22' y='153' font-size='8.5' fill='#99a3a4'>模型只吃 8 个数；曲线形态、图版落点和人工判断分别负责「看见 / 解释 / 签字」</text><text x='22' y='180' font-size='9.5' fill='#6f7a7c'>五段一一对应页面上的 01—05；合成验证集指标与现场口径分开标注</text></svg></div><div class='figcap'><b>图 2</b><span>五段作业流：<b>01</b> 先把资料对齐并挡住无效输入，<b>02</b> 把背景气从曲线和组分比里扣掉，<b>03</b> 把每段压成 8 维特征并建立四类样本库，<b>04</b> 在本页真实训练 softmax 并做温度校准，<b>05</b> 用段聚合、Pixler 图版和置信度把概率变成「自动 / 复核 / 转专家」三类动作。红字不是营销指标：每一步都能在页面里改参数重算。</span></div>"
         },
         {
           "no": 3,
           "en": "DATA",
           "title": "你需要准备什么",
-          "html": "<p>气测数据的量不大，难在<b>对齐与去伪</b>：深度—时间的对应关系必须先理顺，钻井液参数必须同步进来，否则基线估计和阈值都无从谈起。下面五项里，第 3、4 项最容易被忽略，而它们决定算法能不能用。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 5 项</span><span class='cl-prog'><span id='cl-txt'>0 / 5</span><span class='cl-bar'><i id='cl-fill'></i></span></span></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>全烃与组分曲线</span><span class='cl-s'>总烃、C1—C5，1—5 m 一点，单井数千点</span></span><span class='cl-n'>检出率的分母</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>钻井液与工况参数</span><span class='cl-s'>密度、排量、钻时、接单根时间</span></span><span class='cl-n'>校正与干扰识别的前提</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>深度—时间对齐表</span><span class='cl-s'>迟到时间校正、钻具组合、录井仪型号</span></span><span class='cl-n'>曲线与井深必须能对上</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>解释段标签</span><span class='cl-s'>人工解释的异常段与油 / 气 / 水结论</span></span><span class='cl-n'>200—500 段起</span></div><div class='cl-item' data-cl='4'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>试油 / 投产验证</span><span class='cl-s'>层段产量、含水、气油比</span></span><span class='cl-n'>唯一的真值来源</span></div></div>"
+          "html": "<p>气测数据的量不大，难在<b>对齐与去伪</b>：深度—时间的对应关系必须先理顺，钻井液参数必须同步进来，否则基线估计和阈值都无从谈起。下面五项里，第 3、4 项最容易被忽略，而它们决定算法能不能用。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 5 项</span><span class='cl-prog'><span id='cl-txt'>0 / 5</span><span class='cl-bar'><i id='cl-fill'></i></span></span></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>全烃与组分曲线</span><span class='cl-s'>总烃、C1—C5、钻时，1—5 m 一点；本示范 18 口井、单井 480 点</span></span><span class='cl-n'>检出率的分母</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>钻井液与工况参数</span><span class='cl-s'>密度、排量、钻时、接单根时间、迟到时间</span></span><span class='cl-n'>校正与干扰识别的前提</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>深度—时间对齐表</span><span class='cl-s'>迟到时间校正、脱气器效率、钻具组合、录井仪型号</span></span><span class='cl-n'>曲线与井深必须能对上</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>解释段标签</span><span class='cl-s'>人工解释的异常段与气 / 油 / 水 / 干层结论</span></span><span class='cl-n'>312 段（18 口井）</span></div><div class='cl-item' data-cl='4'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>试油 / 投产验证</span><span class='cl-s'>层段产量、含水、气油比</span></span><span class='cl-n'>唯一的真值来源</span></div></div>"
         },
         {
           "no": 4,
           "en": "DIFFICULTY",
           "title": "技术难度与参考方向",
-          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='中'>难度 中</span><span class='small muted'>算法本身不难，难在干扰压制与验收口径</span></div><div class='meter'><i class='on'></i><i class='on'></i><i></i></div><p>检测与分类都是成熟方法：滑动分位数、MAD 噪声估计、阈值加持续长度、图版分区，全是几十年前就在用的东西。真正决定好用不好用的是三件事。<b>一，干扰压制</b>：接单根气、泥浆加重后的脱气效率变化、起下钻后效，都会在曲线上留下与油气显示相似的形态，能不能分开决定了误报率。<b>二，弱显示的分辨</b>：薄层与差油层的显示幅度常常只有 0.3%—0.8%，比背景气波动高不了多少，靠固定阈值必然漏，必须做基线校正，并且要接受「阈值调低就会掺进噪声」的取舍。<b>三，验收指标</b>：不能只看检出率——把阈值调到最低，检出率 100%、误报也 100%。工程上要看的是<b>段级 F1</b>（分段是否与人工段吻合）、<b>结论符合率</b>（油 / 气 / 水是否与试油一致）和<b>误报段数</b>三个数一起。</p><p>建议的推进顺序：① 先把基线校正与分段做扎实，用人工解释段做段级评测；② 再把结论判别接上图版，用试油井做结论符合率；③ 最后才考虑用序列模型（TCN / Transformer）替代手工判据——但一定要留一套「判据版」做对照，否则一旦精度下降，没人说得清算法的错在哪里。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>时序异常检测</span><span class='ref'>滑动分位数基线</span><span class='ref'>序列分类</span><span class='ref'>弱标签学习</span></div><div class='callout warn'><span class='ci'>注意</span><span>这套算法输出的是<b>候选异常段 + 建议结论</b>，不是最终解释。两个红线：超出图版量程或落在分区边界上的段必须标注为「待人工复核」；泥浆加重、堵漏、长时间后效等特殊工况要单独标注，因为这些井段的组分比会被脱气效率带偏，图版结论不可靠。</span></div>"
+          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='中'>难度 中</span><span class='small muted'>算法本身不难，难在四类边界、干扰压制与验收口径</span></div><div class='meter'><i class='on'></i><i class='on'></i><i></i></div><p>检测与分类都是成熟方法：滑动分位数、MAD 噪声估计、阈值加持续长度、softmax 回归、Pixler 图版，全是几十年前就在用的东西。真正决定好用不好用的是四件事。<b>一，干扰压制</b>：接单根气、泥浆加重后的脱气效率变化、起下钻后效，都会在曲线上留下与油气显示相似的形态。 <b>二，弱显示的分辨</b>：薄层与差油层的显示幅度常常只有 0.3%—0.8%，比背景气波动高不了多少，靠固定阈值必然漏；必须做基线校正，并接受「阈值调低就掺进噪声」的取舍。<b>三，四类边界</b>：气层与低幅水层、薄油层与干层在 C1/C2、C1/C3、峰基比、持续长度上互相重叠，单看一个比值必然误判；8 维窗口特征加物理交叉就是为了把「像」和「是」分开。<b>四，验收口径</b>：不能只看准确率——把阈值调到最低，检出率 100%、误报也 100%。工程上要同时看<b>段级 F1</b>、<b>解释一致性</b>、<b>漏解释油层数</b>和<b>待复核率</b>。</p><p>建议的推进顺序：① 先把迟到时间、基线校正与分段做扎实，用人工解释段做段级评测；② 再用试油验证过的段建立 8 维窗口样本库，按井分层留出训练/校准/测试，训练 softmax 并做温度校准；③ 接 Pixler 图版做物理交叉，把「模型置信度高但图版冲突」的段强制转人工；④ 最后才考虑用序列模型替代手工判据——但一定要留一套「判据 + softmax」基线做对照，否则精度下降时没人说得清错在哪里。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>时序异常检测</span><span class='ref'>滑动分位数基线</span><span class='ref'>softmax 回归</span><span class='ref'>标签平滑与温度缩放</span><span class='ref'>Pixler 图版</span></div><div class='callout warn'><span class='ci'>注意</span><span>这套算法输出的是<b>候选异常段 + 建议流体性质 + 置信度</b>，不是最终解释。三条红线：超出 Pixler 图版量程或落在分区边界上的段必须标「待人工复核」；模型与图版冲突时即使概率 99.9% 也不能自动签发；泥浆加重、堵漏、长时间后效等特殊工况要单独标注，因为这些井段的组分比会被脱气效率带偏。没有人工回写，模型永远停在合成数据上。</span></div>"
         }
       ]
     },
@@ -66,67 +66,67 @@
       "label": "案例流程",
       "title": "某区块 18 口井气测资料的异常段解释落地流程",
       "lead": [
-        "目标不是做一个「AI 替人解释」的系统，而是把单井气测解释的工时从 2 h 压到 12 min 以内，并且让同一口井换个人看，分段和结论都一样。",
-        "数据是现成的：录井仪的全烃与组分曲线、钻井液与工况参数、人工解释段，都在录井数据库里；缺的是把它们对齐到同一个深度轴上，并把「接单根气不算显示」这类隐性判断写成规则。"
+        "目标不是做一个「AI 替人解释」的系统，而是把单井气测解释从 3 天压到 4 h 以内，并且让同一口井换个人看，分段和结论都一样。",
+        "数据是现成的：录井仪的全烃与组分曲线、钻井液与工况参数、人工解释段，都在录井数据库里；缺的是把它们对齐到同一个深度轴上，把「接单根气不算显示」这类隐性判断写成规则，再用试油结果把四类边界校准出来。"
       ],
       "stats": [
         [
           "解释井段",
-          "18 口 · 3.2 万点"
+          "18 口 · 312 段"
         ],
         [
-          "异常段标签",
-          "260 段"
+          "合成训练窗口",
+          "720 个 · 576/72/72"
         ],
         [
-          "分段 F1",
-          "0.88"
+          "测试准确率",
+          "88.9% · F1 0.888"
         ],
         [
-          "解释工时",
-          "2 h → 12 min"
+          "解释周期",
+          "3 d → 4 h"
         ]
       ],
       "steps": [
         {
-          "name": "深度—时间对齐与数据治理",
+          "name": "采集、迟到时间校正与质控",
           "role": "数据",
-          "do": "按迟到时间把录井仪的气测曲线从时间轴换算到深度轴，与钻井液密度、排量、钻时、接单根记录一起落到统一的 2—5 m 网格上；剔除停机、循环停止、仪器标定期间的无效点。",
-          "effect": "得到单井一张「深度—全烃—组分—工况」表，后续所有判据都在这张表上算。",
+          "do": "按迟到时间把录井仪的气测曲线从时间轴换算到深度轴，与钻井液密度、排量、钻时、接单根记录一起落到统一的 2—5 m 网格上；剔停机、循环停止、仪器标定期间的无效点，并记录脱气器效率。",
+          "effect": "得到单井一张「深度—全烃—组分—工况」表，后续所有判据都在这张表上算；质控不合格的井段先退回，不进入模型。",
           "trap": "迟到时间算错会让气测峰整体错位几十米，后面的层位对比全废——这一步返工代价最大，务必用已知显示段反向校核。"
         },
         {
-          "name": "滑动分位数基线校正",
+          "name": "滑动分位数基线校正与双判据分段",
           "role": "算法核心",
-          "do": "对全烃曲线逐点求「窗口内 20% 分位数」作为背景气基线，窗口取 40 点（约 100 m），实测减基线得校正曲线；组分曲线按「背景气组成 × 基线幅度」逐组分扣除。",
-          "effect": "背景气漂移被压到接近零，薄层的相对幅度被抬起来，弱显示与噪声的信噪比提高 3—5 倍。",
-          "trap": "窗口不能拍脑袋：窗口比显示段还短，基线的分位数会被显示本身抬起来，弱层直接被减掉（图版上表现为「人看得见、算法看不见」）；窗口太长又跟不上背景漂移。"
+          "do": "对全烃曲线逐点求「窗口内 20% 分位数」作为背景气基线，窗口取 40 点（约 100 m），实测减基线得校正曲线；组分曲线按「背景气组成 × 基线幅度」逐组分扣除。再用 MAD 估计噪声 σ，要求校正值 > k·σ（默认 3）且连续 ≥ 3 点，合并邻近段得到候选段。",
+          "effect": "背景气漂移被压到接近零，薄层的相对幅度被抬起来；接单根窄峰被长度判据筛掉，背景气与仪器噪声被峰高判据筛掉。",
+          "trap": "窗口不能拍脑袋：窗口比显示段还短，基线的分位数会被显示本身抬起来，弱层直接被减掉；窗口太长又跟不上背景漂移。k 也不能固定不变，加重钻井液段脱气效率低、曲线幅度整体变小，同一 k 会把弱显示漏掉。"
         },
         {
-          "name": "峰高 + 持续长度双判据分段",
-          "role": "算法",
-          "do": "用 MAD 估计校正曲线的噪声 σ，要求校正值 > k·σ（k 默认 3）且连续 ≥ 3 点，再合并间隔 ≤ 1 点的邻近段，得到异常段清单。",
-          "effect": "接单根窄峰（1—2 点）被长度判据筛掉，背景气与仪器噪声被峰高判据筛掉，18 口井共检出 268 段，与人工解释段基本一一对应。",
-          "trap": "k 不能固定不变：加重钻井液段脱气效率低、曲线幅度整体变小，同一 k 会把弱显示漏掉，按工况分组标定 k 比全局一个值更稳。"
+          "name": "8 维窗口特征与四类样本库",
+          "role": "特征 / 样本",
+          "do": "在每个候选段的峰区取窗口，计算峰基比、C1/C2、C1/C3、湿度比 Wh=(C2+C3+C4+C5)/C1、平衡比 Bh=(C1+C2)/(C3+C4+C5)、字符比 Ch=(C4+C5)/C3、持续长度（点数）与上升斜率（%/点）。用 18 口合成井、每类 180 个窗口建立气/油/水/干层样本库，共 720 个窗口。",
+          "effect": "模型只吃 8 个有物理含义的数，不再看曲线形状；同一套特征既能表达「干湿」，也能表达「幅度与持续」，四类样本按井分层留出 576 训练 / 72 校准 / 72 测试。",
+          "trap": "比值必须用校正后的组分算；不校正时背景气会把弱层的组分比往「干」的方向拉。样本划分必须按井，不能按窗口随机分，否则同一口井的相似窗口同时进训练和测试，指标会虚高。"
         },
         {
-          "name": "组分比计算与 Pixler 图版判别",
-          "role": "算法",
-          "do": "在每个异常段的峰区（校正值 ≥ 峰值一半的点）计算 C1/C2 与 C1/C3 的加权中位数，打到双对数图版上，按油区 / 气区 / 水区分区给出结论与置信度。",
-          "effect": "输出「段 + 深度区间 + 组分比 + 建议结论 + 置信度」四件套，图版落点可以当场给解释员看，判断依据透明。",
-          "trap": "比值必须用校正后的组分算。不校正时背景气会把弱层的组分比往「干」的方向拉，实测中会出现薄油层被读成气层的系统性错误。"
+          "name": "softmax 四类模型训练与温度校准",
+          "role": "模型",
+          "do": "8 维特征标准化后训练 softmax 回归：标签平滑 0.012、L2 0.0006、动量梯度下降 420 轮；在 72 个校准窗口上网格搜索温度 T 最小化 NLL，再在 72 个测试窗口上报告准确率、宏 F1、混淆矩阵和低置信度比例。",
+          "effect": "本页实测测试准确率 88.9%、宏 F1 0.888、温度 T≈0.85、低置信度（p<0.72）9.7%；当前段输出四类概率与特征贡献，错得最多的是气层↔水层和干层→气层。",
+          "trap": "softmax 在分布外样本上会浮点饱和到 0/1，页面显示截断在 0.1%—99.9%；现场必须同时做 OOD 检查（特征是否落在训练分布内），不能把高概率当成可靠。"
         },
         {
-          "name": "解释员复核与结论回写",
-          "role": "人工",
-          "do": "解释员逐段确认或修改结论，重点看两类段：落在图版分区边界 0.1 个对数单位内的、以及置信度低于 0.7 的；试油或投产结果回来后回写，作为图版边界与 k 值标定的依据。",
-          "effect": "图版分区边界随本区试油数据逐步收窄，结论符合率从上线时的 76% 提到 88% 以上。",
-          "trap": "没有回写就没有闭环。只做自动解释不回收试油结果，图版永远停在「教科书版本」，与本区流体性质对不上。"
+          "name": "段聚合、Pixler 交叉与人工回写",
+          "role": "决策 / 闭环",
+          "do": "把模型判为同一类的相邻候选段合并成显示段；再用段内 C1/C2 与 C1/C3 打到 Pixler 双对数图版上，与模型结论逐段比对。一致且概率/差距过线才自动写入报告；冲突、图版外或低置信度转人工；人工确认或修正的结果回写样本库。",
+          "effect": "输出「段 + 深度区间 + 四类概率 + 图版结论 + 处理级别」，解释员只看两类段：低置信度和证据冲突。示范口径下解释周期 3 天→4 h、一致性 72%→91%、漏解释油层 9 段→2 段。",
+          "trap": "没有回写就没有闭环。只做自动解释不回收试油/人工结论，模型和图版永远停在教科书版本，与本区流体性质对不上。"
         }
       ],
       "metrics": {
         "title": "怎么算“判对了”",
-        "html": "<p style='font-size:12px;color:#6c7872;line-height:1.7;margin-bottom:10px'>下表为现场 268 段、已试油验证井段的口径；右侧可运行示范是 480 点合成单井，默认输出为 4/4 层段命中、4/4 结论一致、1 段背景气单列，两者不要混用。</p><p>气测解释有两层验收：先看<b>分段</b>对不对（圈的位置），再看<b>定性</b>对不对（圈的内容）。三层指标要一起看，单看任何一个都能被调参刷出来。</p><table class='dtable'><thead><tr><th>指标</th><th>定义</th><th>本案例取值</th></tr></thead><tbody><tr><td>段级召回</td><td>人工解释的异常段中，被算法至少覆盖一段的比例（±15 m 容差）</td><td>92%</td></tr><tr><td>段级误报</td><td>算法检出的段中，与任何人工段都不重叠的段数</td><td>8 段 / 268 段检出</td></tr><tr><td>分段吻合度</td><td>算法段与人工段的深度区间重合度（重合长度 / 并集长度）</td><td>F1 = 0.88</td></tr><tr><td>结论符合率</td><td>已试油验证的层段中，算法结论（油 / 气 / 水）与试油结论一致的比例</td><td>88%</td></tr><tr><td>待人工复核率</td><td>自动标注为「图版外 / 边界区 / 特殊工况」的段占比</td><td>11%</td></tr></tbody></table><p>注意<b>段级误报要单独看</b>：误报大部分来自接单根气与后效，这些人眼一看就知道，但会让解释员对整套算法失去信任。加长持续长度判据能压掉大部分，代价是部分薄层一起被压掉——这个取舍要在指标表上明着写出来。</p>"
+        "html": "<p style='font-size:12px;color:#6c7872;line-height:1.7;margin-bottom:10px'>下表把<b>本页合成验证集</b>和<b>现场示范口径</b>分成两列，两者不可混用：左列是本页现场训练/测试算出来的，右列是 18 口井 / 312 个显示段的示范价值口径，不是本页模型在 312 段上的实测。</p><table class='dtable'><thead><tr><th>指标</th><th>本页合成验证集</th><th>现场口径（示范）</th></tr></thead><tbody><tr><td>样本</td><td>720 窗口（18 井 × 40）· 576 / 72 / 72</td><td>18 口井 · 312 个显示段</td></tr><tr><td>测试准确率</td><td>88.9%</td><td>—（不在本页计算）</td></tr><tr><td>宏 F1</td><td>0.888</td><td>—（不在本页计算）</td></tr><tr><td>低置信度比例</td><td>9.7%（p &lt; 0.72）</td><td>待复核率按现场解释规范统计</td></tr><tr><td>解释一致性</td><td>—</td><td>72% → 91%</td></tr><tr><td>漏解释油层</td><td>默认参数下合成真值 4/4 命中、4/4 结论一致</td><td>9 段 → 2 段</td></tr><tr><td>解释周期</td><td>—</td><td>3 天 → 4 小时</td></tr></tbody></table><p>还要单独看<b>误报</b>：默认参数下多出 1 段非显示（3525—3533 m，气测峰值 0.72%，模型气层 95.3% 但 Pixler 判低幅干层），流程把它标成「证据冲突·复核」而不是自动签发。误报大多来自接单根气与背景气抬升，人眼一看就知道，但会让解释员对整套算法失去信任；加长持续长度能压掉大部分，代价是部分薄层一起被压掉——这个取舍要在指标表上明着写出来。</p>"
       },
       "fails": [
         {
@@ -140,6 +140,14 @@
         {
           "name": "不校正就算组分比",
           "why": "背景气是贫气，C1/C2 高达 30 以上，混进弱层的组分比里会把油层「拉干」，把水层「拉湿」。图版落点必须先扣除背景气贡献，否则结论系统性偏移，且偏移方向与背景气幅度有关，不可用常数补偿。"
+        },
+        {
+          "name": "按窗口随机划分训练/测试",
+          "why": "同一口井的相邻窗口高度相似，随机划分会把「同一口井的副本」同时放进训练和测试，准确率虚高。必须按井分层留出，本示范的 576/72/72 就是按 18 口井、每类每井 8/1/1 切的。"
+        },
+        {
+          "name": "把 softmax 概率当最终结论",
+          "why": "分布外样本（如不校正时的整段背景漂移）会让softmax饱和到 99.9%+，概率高不代表可靠。必须同时做 OOD 检查与 Pixler 物理交叉；冲突时即使概率高也转人工。"
         }
       ]
     },
@@ -148,8 +156,8 @@
       "html": "demo/index.html",
       "js": "demo/demo.js",
       "label": "可运行示范",
-      "intro": "一段 3000—4200 m 的合成气测曲线，里面埋了气层、油层、薄油层与水层四个显示段。拖动阈值 k、最小持续长度、基线窗口与分位数，或切换工况与基线方法，看基线怎么被估出来、异常段怎么被检出被漏掉，以及每段的组分比落在 Pixler 图版的哪个分区。",
-      "height": 760
+      "intro": "一段 3000—4200 m 的合成气测曲线走完五段：01 看迟到时间、脱气效率与窄尖峰怎样被质控挡住；02 拖动基线方法、窗口、分位数和阈值，看校正曲线与候选段怎么变；03 看当前段的 8 维窗口特征与 720 个四类样本；04 在本页现场训练 softmax，查看损失曲线、混淆矩阵、测试指标、当前段四类概率与特征贡献；05 看段聚合、Pixler 图版交叉、置信度分级和人工回写怎样把概率变成现场动作。",
+      "height": 1230
     }
   }
 }

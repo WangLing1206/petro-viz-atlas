@@ -3,36 +3,81 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>示范：气测异常智能解释（基线校正 + Pixler 图版）</title>
+<title>示范：从全烃曲线到流体性质（气测异常解释 AI 作业流）</title>
 <link rel="stylesheet" href="demo.css">
 <style>
-  #log{display:block;width:100%;height:470px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:crosshair}
-  #cmp{display:block;width:100%;height:300px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #log{display:block;width:100%;height:380px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:crosshair}
   #pixler{display:block;width:100%;height:auto}
+  .stagehint{font-size:10px;color:var(--ink-4);line-height:1.5;margin:-2px 0 6px;min-height:15px}
+  .stagehint b{color:var(--jade-d);font-weight:600}
+  .drow2{display:grid;grid-template-columns:minmax(0,215px) minmax(0,1fr);gap:12px;align-items:start}
   .segrow{cursor:pointer}
   .segrow.sel td{background:var(--jade-l)}
+  .segrow td{vertical-align:middle;padding:4px 7px 4px 0;font-size:10.5px;line-height:1.35}
   .segrow td.r{white-space:nowrap}
-  .mrow{display:flex;justify-content:space-between;gap:10px;font-size:11px;padding:5px 0;border-bottom:1px solid var(--line)}
-  .mrow:last-child{border-bottom:0}
-  .mrow .k{color:var(--ink-3);white-space:nowrap}
-  .mrow .v{font-family:var(--mono);color:var(--ink-2);text-align:right}
+  .dfig .dval > div{padding:5px 7px}
+  .dfig .dval .v{font-size:13px}
+  .dval.dval4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .dval.dval4 > div{padding:5px 6px}
+  .dval.dval4 .v{font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dval.dval4 .s{font-size:8px;line-height:1.35}
+  .dval.dval4 .db{font-size:8px;padding:1px 4px}
+  .dval.compact > div{padding:4px 7px}
+  .dval.compact .v{font-size:12px}
+  .dval.compact .s{font-size:8px;line-height:1.35}
+  .dstage .dfig-h{margin-bottom:4px}
+  .dstage .dfig-foot{margin-top:4px;padding-top:4px}
+  .dctl{gap:10px 14px;padding:8px 12px}
+  .dctl input[type=range]{width:112px}
+  .qrow{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;padding:4px 0;border-bottom:1px dashed var(--line)}
+  .qrow:last-child{border-bottom:0}
+  .qrow .k{color:var(--ink-4);font-family:var(--mono);font-size:8.5px;letter-spacing:.04em;white-space:nowrap}
+  .qrow .v{color:var(--ink-2);text-align:right;line-height:1.5}
+  .conf{display:grid;grid-template-columns:46px repeat(4,minmax(0,1fr));gap:2px 3px;font-family:var(--mono);font-size:8.5px;align-items:center}
+  .conf .lb{text-align:right;color:var(--ink-4);font-size:7.5px;white-space:nowrap;overflow:hidden}
+  .conf i{display:flex;align-items:center;justify-content:center;height:11px;border-radius:2px;font-style:normal}
+  .split2{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:9px;align-items:start}
+  .frow{display:grid;grid-template-columns:minmax(0,1fr) 56px 34px;gap:6px;align-items:center;font-size:10.5px;padding:3px 0;border-bottom:1px solid var(--line)}
+  .frow:last-child{border-bottom:0}
+  .frow .n{color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .frow .v{font-family:var(--mono);text-align:right;color:var(--ink)}
+  .frow .z{font-family:var(--mono);text-align:right;font-size:9px;color:var(--ink-4)}
+  .wrow{display:grid;grid-template-columns:84px minmax(0,1fr) 42px;gap:6px;align-items:center;font-size:10px;color:var(--ink-3);padding:2px 0}
+  .wrow .track{height:6px;border-radius:3px;background:var(--paper-3);position:relative;overflow:hidden}
+  .wrow .track i{position:absolute;top:0;bottom:0;border-radius:3px}
+  .wrow .val{font-family:var(--mono);font-size:9px;text-align:right;color:var(--ink-2)}
+  .cbar{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--ink-3);padding:1px 0}
+  .cbar .nm{width:38px;white-space:nowrap}
+  .cbar .track{flex:1;height:6px;border-radius:3px;background:var(--paper-3);overflow:hidden}
+  .cbar .track i{display:block;height:100%;border-radius:3px;background:var(--jade)}
+  .cbar .val{font-family:var(--mono);font-size:9.5px;min-width:32px;text-align:right}
+  .tierrow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:10px;padding:1px 0;border-bottom:1px dashed var(--line)}
+  .tierrow:last-child{border-bottom:0}
+  .tierrow .k{color:var(--ink-3)}
+  .tierrow .db{font-size:8px;padding:1px 4px}
+  .dfig .dtrace{max-height:84px}
+  .miniwrap{border:1px solid var(--line);border-radius:6px;background:#fff;padding:4px}
+  .mini-legend{display:flex;gap:9px;flex-wrap:wrap;font-size:9px;color:var(--ink-4);padding:3px 2px 0}
+  .mini-legend span{display:inline-flex;align-items:center;gap:4px}
+  .mini-legend i{width:10px;height:2px;border-radius:1px;display:block}
+  .dmodel-row{padding:2px 0;font-size:9.5px;line-height:1.45}
+  .dstage-lede{margin:2px 0 6px;line-height:1.62}
+  @media (max-width:900px){.drow2{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
 
 <div class="dhead">
   <div>
-    <div class="dkick">GAS LOGGING · 时序检测 + 图版判别</div>
-    <h1>气测全烃与组分 → 异常段 → 油 / 气 / 水结论</h1>
-    <p class="lead">左边是 3000—4200 m 的合成气测曲线：<b>全烃</b>（橙）、<b>C1—C5 组分</b>（中间对数轨）与<b>钻时</b>共用一个深度轴，
-    底纹是算法检出的异常段。右上是 Pixler 双对数图版，各异常段的组分比落点随参数实时移动；右下是结论表。
-    把鼠标放到曲线上可以读该深度的数值。</p>
+    <div class="dkick">GAS LOGGING · 采集 → 校正 → 特征 → 模型 → 决策</div>
+    <h1>从全烃曲线到流体性质：气测异常解释 AI 作业流</h1>
+    <p class="lead">一段 3000—4200 m 合成气测资料走完五段：质控 → 基线 → 8 维窗口特征 → 现场训练 softmax 四分类 → Pixler 交叉与人工回写。改任一参数，02/04/05 同步重算。</p>
   </div>
   <div class="dhead-r">
-    <div class="dstat"><div class="k">异常段</div><div class="v" id="st-n">—</div></div>
-    <div class="dstat good"><div class="k">命中 / 结论</div><div class="v" id="st-recall">—</div></div>
-    <div class="dstat warn"><div class="k">误报段</div><div class="v" id="st-fp">—</div></div>
-    <div class="dstat"><div class="k">复核工时</div><div class="v" id="st-time" style="font-size:12px">—</div></div>
+    <div class="dstat"><div class="k">判定</div><div class="v" id="st-verdict" style="font-size:12px">—</div></div>
+    <div class="dstat good"><div class="k">置信度</div><div class="v" id="st-conf">—</div></div>
+    <div class="dstat"><div class="k">验证准确率</div><div class="v" id="st-acc">—</div></div>
+    <div class="dstat warn"><div class="k">复核比例</div><div class="v" id="st-review">—</div></div>
   </div>
 </div>
 
@@ -43,15 +88,24 @@
   <div class="ctl-s"><label>最小持续</label><input type="range" id="r-len" min="3" max="8" step="1" value="3"><output id="o-len">3 点</output></div>
   <div class="ctl-s"><label>基线窗口</label><input type="range" id="r-win" min="10" max="80" step="5" value="40"><output id="o-win">40 点</output></div>
   <div class="ctl-s"><label>分位数 q</label><input type="range" id="r-q" min="5" max="40" step="5" value="20"><output id="o-q">20%</output></div>
-  <label class="tog on" id="tog-spk"><i></i>接单根尖峰（背景漂移始终存在）</label>
-  <label class="tog on" id="tog-comp"><i></i>显示 C1—C5（仅影响绘制）</label>
-  <button class="dbtn reset" id="btn-reset" type="button" style="margin-left:auto">重置参数</button>
+  <label class="tog on" id="tog-spk"><i></i>接单根尖峰</label>
+  <button class="dbtn pri" id="btn-run" type="button">▶ 运行全流程</button>
+  <button class="dbtn reset" id="btn-reset" type="button">重置参数</button>
+</div>
+
+<div class="dflow" id="flow" role="tablist" aria-label="气测解释作业流">
+  <button type="button" class="on" data-s="0" role="tab" aria-selected="true"><span class="n"><i>01</i>INPUT</span><b>采集与质控</b><span>全烃 / 组分 / 钻时</span></button>
+  <button type="button" data-s="1" role="tab" aria-selected="false"><span class="n"><i>02</i>BASELINE</span><b>基线校正</b><span>滑动分位数</span></button>
+  <button type="button" data-s="2" role="tab" aria-selected="false"><span class="n"><i>03</i>FEATURE</span><b>特征与样本</b><span>8 维窗口特征</span></button>
+  <button type="button" data-s="3" role="tab" aria-selected="false"><span class="n"><i>04</i>MODEL</span><b>四类模型</b><span>softmax 训练</span></button>
+  <button type="button" data-s="4" role="tab" aria-selected="false"><span class="n"><i>05</i>DECISION</span><b>决策与闭环</b><span>图版交叉 / 回写</span></button>
 </div>
 
 <div class="dgrid c2">
   <div class="dcol">
     <div class="dfig">
-      <div class="dfig-h"><b>气测曲线 · 全烃 / 组分 / 钻时</b><span id="hint">深度 3400 m</span></div>
+      <div class="dfig-h"><b>主画布 · 全烃 / C1—C5 / 钻时</b><span id="hint">深度 3400 m</span></div>
+      <div class="stagehint" id="stagehint">—</div>
       <canvas id="log" width="1400" height="940"></canvas>
       <div class="dfig-foot">
         <span><i style="background:#16231f;height:4px"></i>实测全烃</span>
@@ -60,41 +114,134 @@
         <span><i style="background:#355c74"></i>C2</span>
         <span><i style="background:#a64b3c"></i>C3</span>
         <span><i style="background:#99a3a4"></i>钻时</span>
-        <span>底纹 = 检出异常段</span>
+        <span>底纹 = 模型四类判定</span>
       </div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>基线校正前后</b><span>左：实测与基线 · 右：校正后与阈值</span></div>
-      <canvas id="cmp" width="1400" height="600"></canvas>
-      <div class="dfig-foot">
-        <span><i style="background:#99a3a4"></i>实测曲线</span>
-        <span><i class="dash"></i>估计基线</span>
-        <span><i style="background:#1d4e50"></i>校正后</span>
-        <span><i style="background:#a64b3c"></i>阈值线</span>
-        <span>红框 = 合成真值层段未被检出</span>
+
+    <div class="drow2">
+      <div class="dfig">
+        <div class="dfig-h"><b>Pixler 图版</b><span>C1/C2 — C1/C3</span></div>
+        <svg id="pixler" viewBox="0 0 330 300" role="img" aria-label="Pixler 组分比图版"></svg>
+        <div class="dfig-foot">
+          <span><i class="sq" style="background:#f4e8d4;border:1px solid #e3d2b0"></i>油区</span>
+          <span><i class="sq" style="background:#e7eee9;border:1px solid #c8dbd2"></i>气区</span>
+          <span><i class="sq" style="background:#e5ebf0;border:1px solid #cdd8e2"></i>水区</span>
+          <span>点色 = 模型判定</span>
+        </div>
+        <div style="font-size:9.5px;color:var(--ink-4);line-height:1.55;padding-top:2px">红圈 = 模型与图版结论冲突，阶段 05 强制转人工复核。</div>
+      </div>
+      <div class="dfig">
+        <div class="dfig-h"><b>异常段结论</b><span>点击行选中当前段</span></div>
+        <table class="dtable"><thead><tr><th>深度 m</th><th class="num">峰值 %</th><th>模型四类</th><th>Pixler</th></tr></thead><tbody id="hits"></tbody></table>
+        <div style="font-size:9.5px;color:var(--ink-4);padding:6px 0 2px">比值已按估计背景气扣除；模型输入还包含峰基比、湿度比、平衡比、字符比、持续长度与上升斜率。</div>
       </div>
     </div>
   </div>
 
   <div class="dcol">
-    <div class="dfig">
-      <div class="dfig-h"><b>Pixler 图版 · C1/C2 — C1/C3</b><span>双对数 · 点号对应结论表</span></div>
-      <svg id="pixler" viewBox="0 0 330 300" role="img" aria-label="Pixler 组分比图版"></svg>
-      <div class="dfig-foot">
-        <span><i class="sq" style="background:#f4e8d4;border:1px solid #e3d2b0"></i>油区</span>
-        <span><i class="sq" style="background:#e7eee9;border:1px solid #c8dbd2"></i>气区</span>
-        <span><i class="sq" style="background:#e5ebf0;border:1px solid #cdd8e2"></i>水区</span>
-        <span>灰点 = 图版外（待人工复核）</span>
+    <div class="dfig dstage on" data-stage="0">
+      <div class="dfig-h"><b>01 · 采集与质量控制</b><span>先判断这段资料能不能用</span></div>
+      <p class="dstage-lede">录井仪按深度连续输出全烃、C1—C5 与钻时。进模型前先核对<b>迟到时间</b>（气测峰相对钻头位置滞后）、<b>脱气器效率</b>（决定幅度能否跨井比较）与<b>背景漂移/窄尖峰</b>；不合格的资料退回或降级使用，不拿噪声训练模型。</p>
+      <div class="qrow"><span class="k">深度 / 采样</span><span class="v">3000—4200 m · 2.5 m/点 · <b id="q-n">—</b> 点</span></div>
+      <div class="qrow"><span class="k">通道</span><span class="v">全烃 + C1—C5 + 钻时 · 6 轨</span></div>
+      <div class="qrow"><span class="k">迟到时间</span><span class="v" id="q-lag">—</span></div>
+      <div class="qrow"><span class="k">脱气器效率</span><span class="v" id="q-eff">—</span></div>
+      <div class="qrow"><span class="k">背景漂移</span><span class="v" id="q-drift">—</span></div>
+      <div class="qrow"><span class="k">窄尖峰</span><span class="v" id="q-spike">—</span></div>
+      <div class="qrow"><span class="k">噪声 σ / 峰值</span><span class="v" id="q-snr">—</span></div>
+      <div class="qrow"><span class="k">质控结论</span><span class="v" id="q-gate">—</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="1">
+      <div class="dfig-h"><b>02 · 基线校正</b><span>背景气不进异常，也不进比值</span></div>
+      <p class="dstage-lede">用<b>滑动分位数</b>估计背景气：窗口内 20% 分位对少数高值不敏感，接单根窄峰不会把基线抬起来。实测减基线得到校正曲线，再做峰高 + 持续长度检测。把方法切成滑动均值或不校正，看 02 的结果怎样传到 04 的概率。</p>
+      <div class="miniwrap"><svg id="minicmp" viewBox="0 0 320 150" role="img" aria-label="基线校正前后"></svg></div>
+      <div class="mini-legend"><span><i style="background:#99a3a4"></i>实测</span><span><i style="background:#a9742c"></i>估计基线</span><span><i style="background:#1d4e50"></i>校正后</span><span><i style="background:#a64b3c"></i>阈值</span></div>
+      <div class="qrow" style="margin-top:4px"><span class="k">基线方法</span><span class="v" id="b-method">—</span></div>
+      <div class="qrow"><span class="k">基线水平</span><span class="v" id="b-level">—</span></div>
+      <div class="qrow"><span class="k">残余漂移</span><span class="v" id="b-drift">—</span></div>
+      <div class="qrow"><span class="k">噪声 σ / 阈值</span><span class="v" id="b-thr">—</span></div>
+      <div class="qrow"><span class="k">连续段 → 候选段</span><span class="v" id="b-runs">—</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="2">
+      <div class="dfig-h"><b>03 · 特征与样本</b><span>模型只看这 8 个数</span></div>
+      <p class="dstage-lede">每个候选段取窗口，算<b>峰基比、C1/C2、C1/C3、湿度比、平衡比、字符比、持续长度、上升斜率</b>。18 口井 × 每类 180 个窗口做样本；本井只推理，不参与训练。</p>
+      <div class="dval" style="margin-bottom:7px">
+        <div><div class="k">样本窗口</div><div class="v" id="s-n">—</div><div class="s">18 口井 × 40 窗口</div></div>
+        <div><div class="k">训练 / 校准 / 测试</div><div class="v" id="s-split">—</div><div class="s">按井分层留出</div></div>
+      </div>
+      <div id="clsdist"></div>
+      <div class="dfig-h" style="margin-top:7px"><b>当前段 8 维特征</b><span>原始值 · z</span></div>
+      <div id="feats"></div>
+      <div class="dfig-foot" style="margin-top:6px"><span>气/油/水/干层四类各 180 个窗口；不是现场 312 段标签，现场标签口径见 case.json。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="3">
+      <div class="dfig-h"><b>04 · 四类模型训练与推理</b><span>本页现场训练 · 合成窗口</span></div>
+      <p class="dstage-lede">8 维特征标准化后训练 <b>softmax 回归</b>：标签平滑抑制过置信，L2 控制权重，温度缩放在校准集上拟合。</p>
+      <div class="dval dval4" style="margin-bottom:5px">
+        <div><div class="k">训练/校准/测试</div><div class="v" id="m-n">—</div><div class="s">576 / 72 / 72</div></div>
+        <div><div class="k">测试准确率</div><div class="v ok" id="m-acc">—</div><div class="s">留出 72 个窗口</div></div>
+        <div><div class="k">宏 F1</div><div class="v" id="m-f1">—</div><div class="s">四类等权</div></div>
+        <div><div class="k">温度 T</div><div class="v" id="m-temp">—</div><div class="s">校准集 NLL 最小</div></div>
+      </div>
+      <div class="dfig-h"><b>训练 / 校准损失</b><span>交叉熵 · 每 10 轮</span></div>
+      <svg class="dcurve" id="curve" viewBox="0 0 320 68" role="img" aria-label="训练损失曲线"></svg>
+      <div class="split2" style="margin-top:5px">
+        <div>
+          <div class="dfig-h"><b>混淆矩阵</b><span>真↓ · 预→</span></div>
+          <div class="conf" id="cm"></div>
+        </div>
+        <div>
+          <div class="dfig-h"><b>当前段四类概率</b><span>温度缩放后</span></div>
+          <div id="probs"></div>
+        </div>
+      </div>
+      <div class="dfig-h" style="margin-top:6px"><b>特征贡献</b><span>对 logit 差的贡献</span></div>
+      <div id="weights"></div>
+      <div class="dfig-foot" style="margin-top:4px"><div id="calnote" style="display:block;line-height:1.5;font-size:10px">—</div></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="4">
+      <div class="dfig-h"><b>05 · 决策、图版交叉与闭环</b><span>概率怎样变成现场动作</span></div>
+      <p class="dstage-lede">模型概率不是结论：段聚合 + Pixler 图版交叉；一致且过线才自动写报告，冲突/低置信度转人工，确认结果回写样本库。</p>
+      <div class="dval dval4" style="margin-bottom:6px">
+        <div><div class="k">模型判定</div><div class="v" id="d-model" style="font-size:11px">—</div><div class="s">四类 softmax</div></div>
+        <div><div class="k">Pixler 图版</div><div class="v" id="d-pix" style="font-size:11px">—</div><div class="s">独立物理证据</div></div>
+        <div><div class="k">一致性</div><div class="v" id="d-agree" style="font-size:11px">—</div><div class="s">模型 vs 图版</div></div>
+        <div><div class="k">处理级别</div><div class="v" id="d-tier" style="font-size:11px">—</div><div class="s">自动 / 复核 / 专家</div></div>
+      </div>
+      <div id="advice" style="font-size:10.5px;color:var(--ink-2);line-height:1.6;margin:1px 0 5px"></div>
+      <div class="dfig-h"><b>段聚合</b><span>原始连续段 → 显示段</span></div>
+      <div id="agg" style="font-size:10.5px;color:var(--ink-2);line-height:1.6"></div>
+      <div class="dfig-h" style="margin-top:5px"><b>全井分流</b><span>当前参数</span></div>
+      <div id="tiers"></div>
+      <div class="dfeed" id="feedback" style="margin-top:6px">
+        <button class="dbtn" type="button" data-fb="ok">✓ 解释正确</button>
+        <button class="dbtn" type="button" data-fb="bad">✗ 标为误判</button>
+        <span class="dfeed-note" id="fb-note">回写 0 条 · 确认后才进入下一轮训练</span>
+      </div>
+      <div class="dval compact" style="margin-top:6px">
+        <div><div class="k">解释周期</div><div class="v ok">3 d → 4 h</div><div class="s">单井从资料到报告</div></div>
+        <div><div class="k">解释一致性</div><div class="v ok">72% → 91%</div><div class="s">两人独立解释同一井</div></div>
+        <div><div class="k">漏解释油层</div><div class="v ok">9 段 → 2 段</div><div class="s">18 口井 · 312 个显示段</div></div>
+        <div><div class="k">口径</div><div class="v" style="font-size:10px">示范口径</div><div class="s">非现场生产指标</div></div>
       </div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>异常段结论</b><span>点击行看图版落点</span></div>
-      <table class="dtable"><thead><tr><th>深度 m</th><th class="num">峰值 %</th><th class="num">C1/C2*</th><th class="num">C1/C3*</th><th>结论</th></tr></thead><tbody id="hits"></tbody></table>
-      <div style="font-size:9.5px;color:var(--ink-4);padding:6px 0 2px">* 已按背景气组成扣除，与曲线上的原始读数不同；比值无量纲。</div>
+
+    <div class="dmodel">
+      <div class="dmodel-h"><b>模型档案</b><span class="db plain" id="m-badge">已训练</span></div>
+      <div class="dmodel-row"><span class="k">任务</span><span class="v">8 维窗口特征 → 气 / 油 / 水 / 干层四类 + 置信度</span></div>
+      <div class="dmodel-row"><span class="k">数据</span><span class="v">18 口合成井 × 40 窗口 = 720 个样本；本井曲线只做推理，不参与训练</span></div>
+      <div class="dmodel-row"><span class="k">模型</span><span class="v">softmax 回归 · 标签平滑 0.012 · L2 0.0006 · 温度缩放</span></div>
+      <div class="dmodel-row"><span class="k">验证</span><span class="v" id="m-summary">—</span></div>
+      <div class="dmodel-row"><span class="k">边界</span><span class="v">气/水/干层在低幅短持续窗口上互混；模型与 Pixler 冲突时一律转人工</span></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>判据与统计</b><span>当前设置</span></div>
-      <div id="clist"></div>
+
+    <div class="dfig" style="padding-top:8px">
+      <div class="dfig-h"><b>过程日志</b><span>输入 → 动作 → 输出</span></div>
+      <div class="dtrace" id="trace"></div>
     </div>
   </div>
 </div>

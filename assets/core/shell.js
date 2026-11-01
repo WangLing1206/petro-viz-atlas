@@ -103,7 +103,7 @@
       '</div>' +
       '<div class="ftr-bot"><span>场景 ' + A.allScenes.length + ' · 环节 ' + A.stages.length + ' · 案例 ' + s.registered + '</span>' +
       '<span>无后端 · 无追踪 · file:// 可直接打开</span>' +
-      '<span>build ' + esc(A.meta.updated) + ' · v3</span></div>' +
+      '<span>build ' + esc(A.meta.updated) + ' · v4</span></div>' +
       '</div></footer>';
   }
 

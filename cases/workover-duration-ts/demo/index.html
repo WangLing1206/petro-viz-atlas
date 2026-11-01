@@ -3,23 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>示范：修井周期预测（分位数 + 蒙特卡洛）</title>
+<title>示范：从历史工单到可承诺工期（分位数回归 + 蒙特卡洛）</title>
 <link rel="stylesheet" href="demo.css">
 <style>
   .gantt-wrap{border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 4px 2px}
   .gantt-wrap svg{display:block;width:100%;height:auto}
-  .cdf-wrap{margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
-  .cdf-wrap svg{display:block;width:100%;height:auto}
+  .vrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:3.5px 0;border-bottom:1px solid var(--line);font-size:10.5px}
+  .vrow:last-child{border-bottom:0}
+  .vrow .vk{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;color:var(--ink-4);white-space:nowrap}
+  .vrow .vv{font-family:var(--mono);font-size:10.5px;color:var(--ink);text-align:right}
+  .vrow .vv small{font-family:var(--sans);font-size:9px;color:var(--ink-4);margin-left:2px}
+  .vrow .vv.ok{color:var(--ok)}.vrow .vv.warn{color:var(--warn)}.vrow .vv.bad{color:var(--bad)}
+  .frow{display:grid;grid-template-columns:74px minmax(0,1fr) 60px;gap:7px;align-items:center;
+    font-size:10px;color:var(--ink-3);padding:3px 0}
+  .frow .lb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .frow .track{height:6px;border-radius:3px;background:var(--paper-3);position:relative}
+  .frow .track::before{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line-2)}
+  .frow .track i{position:absolute;top:0;bottom:0;border-radius:3px}
+  .frow .val{font-family:var(--mono);font-size:9px;text-align:right;color:var(--ink-2);white-space:nowrap}
+  .chips{display:flex;gap:4px;flex-wrap:wrap;padding:2px 0 5px}
+  .chip{font-family:var(--mono);font-size:8.5px;padding:1px 5px;border-radius:3px;border:1px solid var(--line-2);color:var(--ink-4)}
+  .chip.on{background:var(--jade-l);border-color:var(--jade);color:var(--jade-d)}
+  .calwrap{border:1px solid var(--line);border-radius:6px;background:#fff;padding:3px}
+  .calwrap svg{display:block;width:100%;height:auto}
+  .grpbar{display:grid;grid-template-columns:64px minmax(0,1fr) 52px;gap:7px;align-items:center;font-size:10px;color:var(--ink-3);padding:3px 0}
+  .grpbar .track{height:7px;border-radius:3px;background:var(--paper-3);position:relative}
+  .grpbar .track::before{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line-2)}
+  .grpbar .track i{position:absolute;top:0;bottom:0;border-radius:3px}
+  .grpbar .val{font-family:var(--mono);font-size:9px;text-align:right;color:var(--ink-2)}
+  .plantab td{font-family:var(--mono);font-size:10px;padding:4px 8px 4px 0}
+  .plantab .k2{font-family:var(--sans)}
+  .valtab td{font-family:var(--mono);font-size:10px;padding:4px 8px 4px 0}
+  .valtab .k2{font-family:var(--sans)}
+  .valtab .up{color:var(--ok);font-weight:600}
+  .mini{font-family:var(--mono);font-size:8.5px;color:var(--ink-4);line-height:1.55}
   .keep{background:var(--jade-l)}
-  .dctl button.tog{border:0;background:none;padding:0;font:inherit}
-  .dctl .seg{flex-wrap:wrap}
+  .dstage .dtable td{padding:1.5px 8px 1.5px 0;font-size:10px}
+  .dstage .dtable th{padding:2px 8px 2px 0;font-size:8px}
+  .dstage .dval > div{padding:3px 8px}
+  .dstage .dval .v{font-size:12.5px}
+  .dstage .dval .s{font-size:8.5px}
+  .dstage .dfig-h{margin-bottom:5px}
+  .dstage-lede{margin:2px 0 5px;font-size:11px;line-height:1.6}
+  .dfig-foot{font-size:10px;padding-top:5px;margin-top:6px}
+  .dmodel{padding:7px 11px 6px}
+  .dmodel-row{padding:3.5px 0;font-size:10px}
+  .dtrace{max-height:100px;font-size:9px;line-height:1.7}
+  .dfeed .dbtn{padding:3px 8px;font-size:10px}
+  .dctl{gap:8px}
+  .dctl input[type=range]{width:100px}
+  .dctl .seg button{padding:4px 8px;font-size:11px}
   .dctl .seg button:focus-visible,
   .dctl .tog:focus-visible,
   .dctl .dbtn:focus-visible,
   .ctl-s input:focus-visible{outline:2px solid var(--jade);outline-offset:2px}
   @media (max-width:760px){
     .gantt-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-    .gantt-wrap svg{min-width:640px}
+    .gantt-wrap svg{min-width:620px}
     .dctl{gap:10px}
     .dctl .seg{width:100%}
   }
@@ -29,16 +69,15 @@
 
 <div class="dhead">
   <div>
-    <div class="dkick">QUANTILE + MONTE CARLO · 工期区间</div>
-    <h1>井况 → 工序区间 → 总工期分布</h1>
-    <p class="lead">每一道工序用分位数回归给出 P10—P90 区间（而不是一个均值），再蒙特卡洛抽 2000 次相加得到总工期分布。
-    调度真正需要回答的是：<b>按 10 天报计划，按期完工的概率有多大？</b></p>
+    <div class="dkick">WORKOVER DURATION · 工单 → 特征 → 分位数 → 蒙特卡洛 → 承诺</div>
+    <h1>从历史工单到可承诺工期：分位数回归 + 蒙特卡洛</h1>
+    <p class="lead">调度要的不是「这口井大概几天」，而是「按 10 天报计划，按期完工的概率有多大」。示范把 1450 井次历史工单的质控、9 维特征、7 道工序 × P10/P50/P90 分位数回归、2000 次蒙特卡洛合成和计划回写串成一条可运行的流水线。</p>
   </div>
   <div class="dhead-r">
     <div class="dstat"><div class="k">P50 工期</div><div class="v" id="st-p50">—</div></div>
     <div class="dstat"><div class="k">P90 工期</div><div class="v" id="st-p90">—</div></div>
     <div class="dstat good"><div class="k">按期概率</div><div class="v" id="st-prob">—</div></div>
-    <div class="dstat"><div class="k">区间宽度</div><div class="v" id="st-w">—</div></div>
+    <div class="dstat"><div class="k">P10—P90 宽度</div><div class="v" id="st-w">—</div></div>
   </div>
 </div>
 
@@ -48,50 +87,149 @@
   <button type="button" class="tog on" id="tog-mill" role="switch" aria-checked="true" aria-label="是否需要磨铣"><i></i>需磨铣</button>
   <button type="button" class="tog on" id="tog-kill" role="switch" aria-checked="true" aria-label="是否需要压井"><i></i>需压井</button>
   <div class="ctl-s"><label for="r-plan">计划工期</label><input type="range" id="r-plan" min="3" max="20" step="0.5" value="10" aria-label="计划工期（天）"><output id="o-plan" for="r-plan">10 天</output></div>
-  <button type="button" class="dbtn" id="btn-reset" style="margin-left:auto" aria-label="恢复默认井况与计划工期">重置</button>
+  <div class="grp" style="margin-left:auto">
+    <button class="dbtn pri" id="btn-run" type="button">▶ 运行全流程</button>
+    <button class="dbtn" id="btn-reset" type="button" aria-label="恢复默认井况与计划工期">重置</button>
+  </div>
+</div>
+
+<div class="dflow" id="flow" role="tablist" aria-label="修井工期 AI 作业流">
+  <button type="button" class="on" data-s="0" role="tab" aria-selected="true"><span class="n"><i>01</i>INPUT</span><b>工单采集与质控</b><span>1450 井次 · 7 道工序</span></button>
+  <button type="button" data-s="1" role="tab" aria-selected="false"><span class="n"><i>02</i>FEATURE</span><b>模型看到什么</b><span>9 维井况特征</span></button>
+  <button type="button" data-s="2" role="tab" aria-selected="false"><span class="n"><i>03</i>MODEL</span><b>分位数回归</b><span>21 组 · 现场训练</span></button>
+  <button type="button" data-s="3" role="tab" aria-selected="false"><span class="n"><i>04</i>SIMULATE</span><b>蒙特卡洛合成</b><span>2000 次 · 共同因子</span></button>
+  <button type="button" data-s="4" role="tab" aria-selected="false"><span class="n"><i>05</i>DECIDE</span><b>计划与回写</b><span>按期率 · 人工调整</span></button>
 </div>
 
 <div class="dgrid c2">
   <div class="dcol">
     <div class="dfig">
-      <div class="dfig-h"><b>工序级累计完成时刻（甘特）</b><span>横轴：累计天数（天）· 竖线：总 P50 / P90</span></div>
-      <div class="gantt-wrap"><svg id="gantt" viewBox="0 0 680 272" role="img" aria-label="工序累计完成时刻与总工期分位"></svg></div>
+      <div class="dfig-h"><b>工序级累计完成时刻（甘特）</b><span>横轴：累计天数 · 竖线：总 P50 / P90</span></div>
+      <div class="gantt-wrap"><svg id="gantt" viewBox="0 0 680 210" role="img" aria-label="7 道工序的累计完成时刻与总工期分位"></svg></div>
       <div class="dfig-foot">
-        <span><i style="background:#1d4e50"></i>P50 排期段（深色）</span>
-        <span><i style="background:#c8dbd2"></i>完成时刻 P10—P90（浅色）</span>
+        <span><i style="background:#1d4e50"></i>P50 排期段</span>
+        <span><i style="background:#c8dbd2"></i>完成时刻 P10—P90</span>
         <span><i style="background:#a9742c"></i>方差贡献最大工序</span>
-        <span><i style="background:#1d4e50;height:0;border-left:2px solid #1d4e50;border-radius:0"></i>总 P50 / 总 P90 竖线</span>
+        <span><i style="background:#1d4e50;height:0;border-left:2px solid #1d4e50;border-radius:0"></i>总 P50 / P90</span>
       </div>
     </div>
     <div class="dfig">
       <div class="dfig-h"><b>总工期分布（2000 次蒙特卡洛）</b><span id="mc-hint">—</span></div>
-      <div class="gantt-wrap"><svg id="hist" viewBox="0 0 680 234" role="img" aria-label="总工期分布"></svg></div>
+      <div class="gantt-wrap"><svg id="hist" viewBox="0 0 680 165" role="img" aria-label="总工期分布"></svg></div>
       <div class="dfig-foot">
         <span><i style="background:#c8dbd2"></i>全部落在计划内</span>
-        <span><i style="background:#e6d3ae"></i>跨界 bin（部分超期）</span>
+        <span><i style="background:#e6d3ae"></i>跨界 bin</span>
         <span><i style="background:#a64b3c;opacity:.55"></i>全部超期</span>
         <span>竖线：P10 / P50 / P90 与计划工期</span>
       </div>
     </div>
+    <div class="dfig">
+      <div class="dfig-h"><b>按期完工概率 · CDF</b><span>竖线与曲线交点 = 按期概率</span></div>
+      <div class="gantt-wrap"><svg id="cdf" viewBox="0 0 680 108" role="img" aria-label="总工期累计概率曲线"></svg></div>
+    </div>
   </div>
 
   <div class="dcol">
-    <div class="dfig">
-      <div class="dfig-h"><b>按期完工概率 · CDF</b><span>竖线与曲线交点 = 按期概率</span></div>
-      <div id="prob"></div>
-      <div class="cdf-wrap"><svg id="cdf" viewBox="0 0 320 170" role="img" aria-label="总工期累计概率曲线"></svg></div>
-      <p class="dnote" style="margin-top:9px;font-size:11px" id="note"></p>
+    <div class="dfig dstage on" data-stage="0">
+      <div class="dfig-h"><b>01 · 工单采集与质量控制</b><span>模型还没开始算</span></div>
+      <p class="dstage-lede">历史工单来自作业管理系统：井深、故障类型、7 道工序起止时间。进模型前先过三道质控：<b>耗时为负/为零</b>、<b>7 道缺段</b>、<b>总工期被截断</b>；不合格工单不进训练集。</p>
+      <div class="vrow"><span class="vk">原始工单</span><span class="vv"><b>1450</b> 井次 · 7 道工序</span></div>
+      <div class="vrow"><span class="vk">异常工单</span><span class="vv"><b id="q-bad">47</b> 条 · 耗时 ≤ 0 / 顺序错</span></div>
+      <div class="vrow"><span class="vk">缺失工序</span><span class="vv"><b id="q-miss">51</b> 条 · 7 道缺 1</span></div>
+      <div class="vrow"><span class="vk">工期截断</span><span class="vv"><b id="q-trunc">30</b> 条 · 总工期 &lt; 2.6 天</span></div>
+      <div class="vrow"><span class="vk">质控后可用</span><span class="vv ok"><b id="q-ok">1322</b> 条 · <b id="q-rate">91.2%</b></span></div>
+      <div class="vrow"><span class="vk">训练 / 验证</span><span class="vv"><b id="q-split">1058 / 264</b> · 80 / 20</span></div>
+      <div class="vrow"><span class="vk">当前工单</span><span class="vv" id="q-cur">—</span></div>
+      <div class="vrow"><span class="vk">输入判定</span><span class="vv" id="q-gate">—</span></div>
+      <div class="dfig-foot" style="margin-top:7px"><span>截断工单会被系统在 2.6 天「收尾」，如果留在训练集，模型会学会「所有井都很快」。</span></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>工序明细</b><span>天 · 方差贡献按协方差分解</span></div>
-      <table class="dtable"><thead><tr><th>工序</th><th class="num">P10</th><th class="num">P50</th><th class="num">P90</th><th class="num">宽</th></tr></thead><tbody id="proc"></tbody></table>
+
+    <div class="dfig dstage" data-stage="1">
+      <div class="dfig-h"><b>02 · 模型看到的 9 维特征</b><span>原始工单 → 可比较的数</span></div>
+      <p class="dstage-lede">模型不吃「作业队」「天气」这类会随台账变动的字段，只吃 9 个数：<b>井深、5 类故障 one-hot（断脱为基准）、作业复杂度、工序数、含打捞/套管/磨铣/压井</b>。每个数按训练集均值标准化。</p>
+      <div class="frow"><span class="lb">井深</span><span class="track"><i id="fb-depth"></i></span><span class="val" id="fv-depth">—</span></div>
+      <div class="chips" id="f-onehot"></div>
+      <div class="frow"><span class="lb">作业复杂度</span><span class="track"><i id="fb-comp"></i></span><span class="val" id="fv-comp">—</span></div>
+      <div class="frow"><span class="lb">工序数</span><span class="track"><i id="fb-nproc"></i></span><span class="val" id="fv-nproc">—</span></div>
+      <div class="frow"><span class="lb">含打捞</span><span class="track"><i id="fb-fish"></i></span><span class="val" id="fv-fish">—</span></div>
+      <div class="frow"><span class="lb">含套管作业</span><span class="track"><i id="fb-casing"></i></span><span class="val" id="fv-casing">—</span></div>
+      <div class="frow"><span class="lb">含磨铣</span><span class="track"><i id="fb-mill"></i></span><span class="val" id="fv-mill">—</span></div>
+      <div class="frow"><span class="lb">含压井</span><span class="track"><i id="fb-kill"></i></span><span class="val" id="fv-kill">—</span></div>
+      <div class="dfig-foot" style="margin-top:7px"><span>复杂度 = 磨铣 0.6 + 压井 0.4；工序数 = 7 + 磨铣 + 压井（7—9 道）。</span></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>影响因素</b><span>本井相对基准</span></div>
-      <div id="factors"></div>
+
+    <div class="dfig dstage" data-stage="2">
+      <div class="dfig-h"><b>03 · 分位数回归训练与验证</b><span>本页现场训练 · 合成工单</span></div>
+      <p class="dstage-lede">7 道工序 × 3 个分位 = <b>21 组线性分位数回归</b>，pinball loss 现场训练 200 轮，留出 264 井次验证；分位交叉按单调性后处理。</p>
+      <div class="dval">
+        <div><div class="k">训练 / 验证</div><div class="v" id="m-n">—</div><div class="s">80 / 20 井次划分</div></div>
+        <div><div class="k">P10—P90 覆盖</div><div class="v ok" id="m-cov">—</div><div class="s">名义 80%</div></div>
+        <div><div class="k">P50 工序误差</div><div class="v" id="m-ae">—</div><div class="s">中位绝对误差 · 天</div></div>
+        <div><div class="k">分位交叉</div><div class="v" id="m-cross">—</div><div class="s">后处理后</div></div>
+      </div>
+      <p class="mini" style="margin:5px 0 1px">训练损失 · pinball · 每 4 轮</p>
+      <svg class="dcurve" id="curve" viewBox="0 0 320 58" role="img" aria-label="训练与验证损失曲线"></svg>
+      <p class="mini" style="margin:5px 0 1px">P50 校准 · 预测 vs 实际（验证集 5 桶中位）</p>
+      <div class="calwrap"><svg id="calib" viewBox="0 0 320 78" role="img" aria-label="P50 预测与实际校准图"></svg></div>
+      <div class="dfig-h" style="margin-top:6px"><b>当前关键工序的特征贡献</b><span>按组汇总 · 对数空间</span></div>
+      <div id="contrib"></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="3">
+      <div class="dfig-h"><b>04 · 蒙特卡洛合成总工期</b><span>工序分位 → 总工期分布</span></div>
+      <p class="dstage-lede">每道工序用 P10/P50/P90 拟合对数正态，再按 <b>z_p = 0.60·z₀ + 0.80·ε_p</b> 抽 2000 组相加。共同因子代表地层、队伍、设备的共同扰动；去掉它，区间会明显变窄。</p>
+      <div class="dval">
+        <div><div class="k">抽样次数</div><div class="v" id="s-n">2000</div><div class="s">固定随机流 · 可复现</div></div>
+        <div><div class="k">共同因子载荷</div><div class="v" id="s-load">0.60</div><div class="s">z 空间两两相关 0.36</div></div>
+        <div><div class="k">工序平均相关</div><div class="v" id="s-corr">—</div><div class="s">2000 组实测</div></div>
+        <div><div class="k">忽略相关</div><div class="v warn" id="s-indep">—</div><div class="s">P10—P90 宽度会低估</div></div>
+      </div>
+      <div class="dfig-h" style="margin-top:7px"><b>工序分位（当前井）</b><span>天 · 按 P10 / P50 / P90</span></div>
+      <table class="dtable plantab"><thead><tr><th>工序</th><th class="num">P10</th><th class="num">P50</th><th class="num">P90</th><th class="num">宽</th></tr></thead><tbody id="proc"></tbody></table>
+      <div class="dfig-foot" style="margin-top:5px"><span id="key-hint">—</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="4">
+      <div class="dfig-h"><b>05 · 计划决策与回写</b><span>分布 → 可承诺的日期</span></div>
+      <p class="dstage-lede">计划工期是<b>承诺</b>，不是预测。滑杆给出「按 X 天报计划 → 按期概率 Y%」；P80 是常用承诺档，人工确认或改期后回写台账。</p>
+      <div class="dval">
+        <div><div class="k">当前计划</div><div class="v" id="p-plan">—</div><div class="s">滑杆可调</div></div>
+        <div><div class="k">按期概率</div><div class="v ok" id="p-prob">—</div><div class="s">2000 次抽样中按时完工</div></div>
+        <div><div class="k">P80 承诺</div><div class="v" id="p-p80">—</div><div class="s">覆盖约 80% 抽样</div></div>
+        <div><div class="k">关键工序</div><div class="v" id="p-key" style="font-size:11px">—</div><div class="s">方差贡献最大</div></div>
+      </div>
+      <table class="dtable plantab" style="margin-top:7px"><thead><tr><th>口径</th><th class="num">工期</th><th class="num">按期概率</th></tr></thead><tbody id="plantab"></tbody></table>
+      <p class="mini" style="margin-top:6px">1450 井次 · 改造前后（示范口径，不是本页仿真读数）</p>
+      <table class="dtable valtab"><thead><tr><th>指标</th><th>改造前</th><th>改造后</th></tr></thead><tbody>
+        <tr><td class="k2">人工估工期 MAPE</td><td>28%</td><td class="up">14%</td></tr>
+        <tr><td class="k2">P80 承诺兑现率</td><td>62%</td><td class="up">81%</td></tr>
+        <tr><td class="k2">计划编制</td><td>2 h</td><td class="up">10 min</td></tr>
+        <tr><td class="k2">待机 / 窝工成本</td><td>基线</td><td class="up">−18%</td></tr>
+      </tbody></table>
+      <div class="dfeed" id="feedback" style="margin-top:7px">
+        <button class="dbtn" type="button" data-fb="adopt">✓ 采纳 P80 承诺</button>
+        <button class="dbtn" type="button" data-fb="adjust">✗ 人工上调 1 天</button>
+        <span class="dfeed-note" id="fb-note">回写 0 条 · 人工确认后才进入下一轮训练</span>
+      </div>
+    </div>
+
+    <div class="dmodel">
+      <div class="dmodel-h"><b>模型档案</b><span class="db plain" id="m-badge">已训练</span></div>
+      <div class="dmodel-row"><span class="k">任务</span><span class="v">7 道工序 × P10/P50/P90 分位数回归 + 2000 次蒙特卡洛合成</span></div>
+      <div class="dmodel-row"><span class="k">数据</span><span class="v">1450 井次合成工单 · 质控后 1322 · 80/20 划分</span></div>
+      <div class="dmodel-row"><span class="k">模型</span><span class="v">21 组线性分位数回归 · 9 维特征 · pinball loss</span></div>
+      <div class="dmodel-row"><span class="k">验证</span><span class="v" id="m-summary">—</span></div>
+      <div class="dmodel-row"><span class="k">边界</span><span class="v">工序口径不一致 / 截断工单 / 极端井况 → 区间变宽，转人工复核</span></div>
+    </div>
+
+    <div class="dfig" style="padding-top:8px">
+      <div class="dfig-h"><b>过程日志</b><span>输入 → 处理 → 输出</span></div>
+      <div class="dtrace" id="trace"></div>
     </div>
   </div>
 </div>
+
+<p class="dnote" id="note"></p>
 
 <script src="demo.js"></script>
 </body>

@@ -1,101 +1,150 @@
 {
   "id": "workover-risk-ts",
   "sceneId": "wo4",
-  "methods": ["ts"],
-  "title": "修井作业风险预警：基线残差法",
-  "version": "1.1.0",
-  "updated": "2026-10-30",
+  "methods": [
+    "ts"
+  ],
+  "title": "从六通道到早期报警：修井作业多变量异常检测",
+  "version": "2.0.0",
+  "updated": "2026-11-01",
   "status": "ready",
   "tabs": {
     "background": {
       "label": "专业背景",
-      "lede": "修井是「在别人的井里动手」：压井、起原井管柱、通井、磨铣、打捞这些工序本身就在制造井下扰动。工序顺序不能乱：先压井/井控，再起原井管柱、通井/打印、磨铣/打捞；卡管柱后要插入停钻/活动管柱/震击解卡，最后才是循环洗井与完井试压。一旦出现立压与返出同降（漏失）、扭矩上升且悬重下降（卡管柱前兆）这类异常，从出现到失控往往只有 5—10 分钟。现场靠人盯屏，异常阈值是死值——而修井的工况本身在频繁切换，死阈值不是漏报就是不停误报。本案例讲的是用「工况分段 + 自适应基线 + 多变量联合判据」代替死阈值。",
+      "lede": "修井是「在别人的井里动手」：压井、起管柱、通井、磨铣、打捞这些工序本身就在制造扰动，死阈值在工况切换时不是误报就是漏报；异常前兆又是相对自身基线的缓慢偏离，绝对值上看完全正常。改造把一次 60 分钟作业拆成五段：01 采集与工况上下文——六通道 2 s/点 + 8 段工序记录，边界 ±24 s 不评分；02 工序分段与特征——逐工序滑 40 s 窗，抽 21 维（残差、标准差、斜率、通道相关）；03 正常工况建模——只用正常段估计逐工序均值/协方差（收缩），算马氏距离，并在留出的正常窗口上把阈值校准到 1% 误报；04 异常评分与 episode——D²/阈值连续/相邻合并、按 1.0/1.15/1.35 倍分级、统计提前量；05 处置与价值——报警卡片交人工确认，误报回写正常集，下一轮重标定。",
       "judge": [
-        { "label": "任务类型", "value": "多变量时序异常检测", "desc": "在工况切换的背景下找异常" },
-        { "label": "数据门槛", "value": "秒级六通道 + 数十起事故", "desc": "悬重 / 扭矩 / 立压 / 套压 / 返出 / 池体积 + 事件台账" },
-        { "label": "可见收益", "value": "预警提前 3—8 min", "desc": "示范默认中位 3.6 min；从「事后处置」到「事前干预」" },
-        { "label": "难度", "value": "中", "desc": "异常样本少，误报代价高", "html": "<span class='dtag' data-d='中'>难度 中</span>" }
+        {
+          "label": "任务类型",
+          "value": "多变量时序异常检测（正常工况建模）",
+          "desc": "在工况切换背景下找偏离；不是单通道死阈值，也不是事故类型分类"
+        },
+        {
+          "label": "数据门槛",
+          "value": "秒级六通道 + 工序记录 + 正常作业样本",
+          "desc": "悬重/扭矩/立压/套压/返出/池体积 + 工序起止 + 事件台账；不需要标注异常，但正常段要干净"
+        },
+        {
+          "label": "可见收益",
+          "value": "提前 4.5 min · 误报 9→2",
+          "desc": "38 井次示范口径；从「事后处置」到「事前干预」；不是本页仿真读数"
+        },
+        {
+          "label": "难度",
+          "value": "中",
+          "desc": "难在工况分段、协方差估计与 1% 误报标定，不是模型复杂度",
+          "html": "<span class='dtag' data-d='中'>难度 中</span>"
+        }
       ],
       "sections": [
         {
           "no": 1,
           "en": "PROBLEM",
           "title": "当前做法与问题",
-          "html": "<p>修井现场有仪表和报警，但报警逻辑是<b>死阈值</b>：立压低于 3 MPa 报警、扭矩高于 12 kN·m 报警。问题有两个：<b>一是工况本身在变</b>——磨铣时扭矩天然高，起原井管柱时立压接近 0，死阈值只能按最坏工况设定，于是正常工况下疯狂误报，异常初期又不够敏感；<b>二是事故前兆是「相对自身基线」的偏离</b>，不是绝对数值。悬重从 420 kN 缓慢掉到 400 kN，绝对值上看完全正常，但对这口井、这个工序而言已经是危险信号。</p><p>结果是现场普遍把报警关掉或调得很松，靠司钻的经验与手感——而经验在夜班、在连续作业 10 小时后最不可靠。</p><div class='figure'><svg viewBox='0 0 660 208' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='事故发展与预警窗口'><text x='14' y='18' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>事故的时间尺度：留给预警的窗口只有几分钟</text><line x1='40' y1='92' x2='620' y2='92' stroke='#d3c9b6'/><g><circle cx='120' cy='92' r='5' fill='#a9742c'/><text x='120' y='76' font-size='10' fill='#83551f' text-anchor='middle'>前兆出现</text><text x='120' y='112' font-size='9' fill='#99a3a4' text-anchor='middle' font-family='monospace'>T-8 min</text></g><g><circle cx='300' cy='92' r='5' fill='#a64b3c'/><text x='300' y='76' font-size='10' fill='#a64b3c' text-anchor='middle'>参数明显偏离</text><text x='300' y='112' font-size='9' fill='#99a3a4' text-anchor='middle' font-family='monospace'>T-3 min</text></g><g><circle cx='430' cy='92' r='6' fill='#a64b3c'/><text x='430' y='76' font-size='10.5' fill='#a64b3c' text-anchor='middle' font-weight='600'>事故发生</text><text x='430' y='112' font-size='9' fill='#99a3a4' text-anchor='middle' font-family='monospace'>T-0</text></g><g><circle cx='560' cy='92' r='5' fill='#6f7a7c'/><text x='560' y='76' font-size='10' fill='#6f7a7c' text-anchor='middle'>处置与起钻</text><text x='560' y='112' font-size='9' fill='#99a3a4' text-anchor='middle' font-family='monospace'>T+4 h</text></g><path d='M120 140 L300 140' stroke='#a9742c' stroke-width='2'/><path d='M120 136 L120 144 M300 136 L300 144' stroke='#a9742c'/><text x='210' y='160' font-size='10' fill='#83551f' text-anchor='middle'>死阈值能抓到的部分（已经晚了）</text><path d='M60 184 L420 184' stroke='#1d4e50' stroke-width='2'/><path d='M60 180 L60 188 M420 180 L420 188' stroke='#1d4e50'/><text x='240' y='200' font-size='10' fill='#123a3d' text-anchor='middle'>基线残差法能提前看到的窗口（异常的第一分钟就有偏离）</text></svg></div><div class='figcap'><b>图 1</b><span>关键差别不在算法多先进，而在<b>参照物</b>：死阈值比的是绝对数字，基线法比的是「这口井这个工序此刻应该是什么样」。前兆往往是相对自身基线的缓慢漂移。</span></div>"
+          "html": "<p>修井现场有仪表和报警，但报警逻辑是<b>死阈值</b>：立压低于 3 MPa 报警、扭矩高于 12 kN·m 报警。问题有两个：<b>一是工况本身在变</b>——磨铣时扭矩天然高，起原井管柱时立压接近 0，死阈值只能按最坏工况设定，于是正常工况下疯狂误报，异常初期又不够敏感；<b>二是事故前兆是「相对自身基线」的偏离</b>，不是绝对数值。悬重从 420 kN 缓慢掉到 400 kN，绝对值上看完全正常，但对这口井、这个工序而言已经是危险信号。</p><p>结果是现场普遍把报警关掉或调得很松，靠司钻的经验与手感——而经验在夜班、在连续作业 10 小时后最不可靠。</p><div class='figure'><svg viewBox='0 0 660 208' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='事故发展与预警窗口'><text x='14' y='18' font-size='9.5' font-family='monospace' fill='#99a3a4' letter-spacing='1.2'>事故的时间尺度：留给预警的窗口只有几分钟</text><line x1='40' y1='92' x2='620' y2='92' stroke='#d3c9b6'/><g><circle cx='120' cy='92' r='5' fill='#a9742c'/><text x='120' y='76' font-size='10' fill='#83551f' text-anchor='middle'>前兆出现</text><text x='120' y='112' font-size='9' fill='#99a3a4' text-anchor='middle' font-family='monospace'>T-8 min</text></g><g><circle cx='300' cy='92' r='5' fill='#a64b3c'/><text x='300' y='76' font-size='10' fill='#a64b3c' text-anchor='middle'>参数明显偏离</text><text x='300' y='112' font-size='9' fill='#99a3a4' text-anchor='middle' font-family='monospace'>T-3 min</text></g><g><circle cx='430' cy='92' r='6' fill='#a64b3c'/><text x='430' y='76' font-size='10.5' fill='#a64b3c' text-anchor='middle' font-weight='600'>事故发生</text><text x='430' y='112' font-size='9' fill='#99a3a4' text-anchor='middle' font-family='monospace'>T-0</text></g><g><circle cx='560' cy='92' r='5' fill='#6f7a7c'/><text x='560' y='76' font-size='10' fill='#6f7a7c' text-anchor='middle'>处置与起钻</text><text x='560' y='112' font-size='9' fill='#99a3a4' text-anchor='middle' font-family='monospace'>T+4 h</text></g><path d='M120 140 L300 140' stroke='#a9742c' stroke-width='2'/><path d='M120 136 L120 144 M300 136 L300 144' stroke='#a9742c'/><text x='210' y='160' font-size='10' fill='#83551f' text-anchor='middle'>死阈值能抓到的部分（已经晚了）</text><path d='M60 184 L420 184' stroke='#1d4e50' stroke-width='2'/><path d='M60 180 L60 188 M420 180 L420 188' stroke='#1d4e50'/><text x='240' y='200' font-size='10' fill='#123a3d' text-anchor='middle'>逐工序正常模型能提前看到的窗口（异常的第一分钟就有偏离）</text></svg></div><div class='figcap'><b>图 1</b><span>关键差别不在算法多先进，而在<b>参照物</b>：死阈值比的是绝对数字，逐工序正常模型比的是「这口井这个工序此刻应该是什么样」。前兆往往是相对自身基线的缓慢漂移，21 维窗口特征把这种漂移放大成可校准的马氏距离。</span></div>"
         },
         {
           "no": 2,
           "en": "INTERVENTION",
-          "title": "AI 能做什么",
-          "html": "<p>方法可以拆成四层，每层都很朴素：<b>① 工况分段</b>——用立压、扭矩与排量的组合规则把作业切成压井、起管柱、通井、磨铣/打捞、循环、试压等区段；示范页为便于复核，直接使用人工工序记录，并在界面上明确标注「人工工序记录」，不冒充自动识别。异常检测在每个区段内独立进行，从根本上避开「工况切换引起的误报」；<b>② 自适应基线</b>——每个通道、每个工序内计算 EWMA 慢基线与残差 σ，异常分数 z = (实测 − 慢基线) / σ；<b>③ 多变量联合判据</b>——扭矩↑且悬重↓→卡管柱前兆，立压↓且返出/池体积↓→漏失，套压↑且返出/池体积↑→井涌；<b>④ 持续性判据与分级</b>——联合得分连续 N 个采样点超阈值才报警，按得分与持续时间分「关注 / 预警 / 报警」三级。</p><p>这套方法不需要标注异常样本（<b>无监督</b>），上线快；异常台账的作用是事后评估提前量与漏报率，也就是<b>验证</b>而不是训练。</p><div class='figure'><svg viewBox='0 0 660 200' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='基线残差法与分级'><g><rect x='14' y='34' width='150' height='130' rx='8' fill='#fdfcf9' stroke='#e3dccd'/><text x='89' y='54' font-size='10' fill='#4a585c' text-anchor='middle'>实测 vs EWMA 基线</text><path d='M30 140 C60 120 74 96 96 108 C120 120 132 88 152 84' fill='none' stroke='#1d4e50' stroke-width='1.6'/><path d='M30 144 C60 126 74 104 96 116 C120 128 132 100 152 96' fill='none' stroke='#a64b3c' stroke-width='1.2' stroke-dasharray='4 3'/><path d='M30 150 C60 138 74 124 96 130 C120 138 132 118 152 112' fill='none' stroke='#d3c9b6' stroke-width='6' opacity='.35'/><text x='89' y='182' font-size='9' fill='#99a3a4' text-anchor='middle'>绿=实测，灰带=基线±2σ</text></g><path d='M180 100 L206 100' stroke='#d3c9b6' stroke-width='1.4'/><path d='M200 95 L208 100 L200 105 Z' fill='#d3c9b6'/><g><rect x='216' y='34' width='150' height='130' rx='8' fill='#fdfcf9' stroke='#e3dccd'/><text x='291' y='54' font-size='10' fill='#4a585c' text-anchor='middle'>残差 z 分数</text><path d='M232 120 L260 118 L284 100 L300 66 L316 58 L336 92 L350 116' fill='none' stroke='#355c74' stroke-width='1.6'/><line x1='232' y1='76' x2='350' y2='76' stroke='#a64b3c' stroke-dasharray='4 3'/><line x1='232' y1='56' x2='350' y2='56' stroke='#a64b3c'/><text x='348' y='52' font-size='9' fill='#a64b3c' text-anchor='end'>3σ 报警</text><text x='348' y='72' font-size='9' fill='#a9742c' text-anchor='end'>2σ 关注</text><text x='291' y='182' font-size='9' fill='#99a3a4' text-anchor='middle'>超阈值且持续 N 点才算</text></g><path d='M382 100 L408 100' stroke='#d3c9b6' stroke-width='1.4'/><path d='M402 95 L410 100 L402 105 Z' fill='#d3c9b6'/><g><rect x='418' y='34' width='104' height='130' rx='8' fill='#fdfcf9' stroke='#e3dccd'/><text x='470' y='54' font-size='10' fill='#4a585c' text-anchor='middle'>分级</text><rect x='432' y='68' width='76' height='22' rx='5' fill='#e8eef6' stroke='#b9cde4'/><text x='470' y='83' font-size='9.5' fill='#3a6ea5' text-anchor='middle'>关注 · 推送信息</text><rect x='432' y='96' width='76' height='22' rx='5' fill='#f9efd7' stroke='#e3d2b0'/><text x='470' y='111' font-size='9.5' fill='#a8791b' text-anchor='middle'>预警 · 提示司钻</text><rect x='432' y='124' width='76' height='22' rx='5' fill='#f5e6e1' stroke='#dcc3bd'/><text x='470' y='139' font-size='9.5' fill='#a64b3c' text-anchor='middle'>报警 · 停泵检查</text></g><path d='M534 100 L560 100' stroke='#d3c9b6' stroke-width='1.4'/><path d='M554 95 L562 100 L554 105 Z' fill='#d3c9b6'/><g><rect x='570' y='34' width='76' height='130' rx='8' fill='#faf7f0' stroke='#c8d9d1'/><text x='608' y='54' font-size='10' fill='#123a3d' text-anchor='middle'>处置建议</text><text x='608' y='80' font-size='9' fill='#4a585c' text-anchor='middle'>立压↓</text><text x='608' y='98' font-size='9' fill='#6f7a7c' text-anchor='middle'>查漏失</text><text x='608' y='126' font-size='9' fill='#4a585c' text-anchor='middle'>扭矩↑</text><text x='608' y='144' font-size='9' fill='#6f7a7c' text-anchor='middle'>活动管柱</text></g><text x='14' y='24' font-size='9.5' fill='#99a3a4'>全程不需要异常样本参与训练；事故台账只用来评估提前量与漏报率</text></svg></div><div class='figcap'><b>图 2</b><span>EWMA 的平滑系数 λ 是这套方法唯一需要调的参数：λ 小基线稳但反应慢（抓不到急变），λ 大反应快但会被异常本身带偏。工程上通常用<b>慢基线</b>做参照、再用持续性判据做触发；本示范只实现一条逐通道慢基线，避免把未实现的快基线写成已上线能力。</span></div>"
+          "title": "AI 能做什么：五段作业流",
+          "html": "<p>改造把这件事拆成五段，每段都能在示范页里点开看：</p><p><b>01 采集与工况上下文</b>——六通道 2 s/点（悬重、扭矩、立压、套压、返出、池体积）+ 8 段工序记录；工序边界 ±24 s 的起停泵冲击整段不评分，窗口必须完整落在同一工序内。</p><p><b>02 工序分段与特征</b>——每个工序内滑 20 点（40 s）窗，抽 21 维：6 个残差（窗口均值 − 本工序正常均值）、6 个标准差、6 个斜率、3 个通道相关（悬重–扭矩、立压–返出、套压–池体积）。</p><p><b>03 正常工况建模与阈值校准</b>——8 次合成正常作业，5 次训练 / 3 次校准；每个工序只用正常窗口估计 21 维特征的均值与协方差（收缩 λ=0.08），算马氏距离 D²；阈值取校准集 q99，目标 1% 误报。不是手调阈值，也不是用异常样本训练。</p><p><b>04 异常评分与 episode</b>——D²/阈值 ≥1 连续 ≥10 s 才起 episode，20 s 内相邻段合并；峰值 ≥1.15× 记预警，≥1.35× 且持续 ≥60 s 记报警；提前量 = 事件时刻 − episode 起点。</p><p><b>05 处置与价值</b>——报警卡片给「疑似什么 + 建议动作」，司钻确认或标误报；误报窗口回写正常校准集，下一轮重标定 μ/Σ 与 q99。38 井次示范口径：中位提前 4.5 min，误报 9→2，漏报 2→0，避免 1 次 near-miss。</p><p>这套方法不需要标注异常样本（<b>无监督</b>），上线快；异常台账的作用是事后评估提前量与漏报率，也就是<b>验证</b>而不是训练。</p><div class=\"figure\"><svg viewBox=\"0 0 660 178\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"修井风险预警五段作业流\">\n<text x=\"10\" y=\"15\" font-size=\"9.5\" font-family=\"monospace\" fill=\"#99a3a4\" letter-spacing=\".06em\">五段作业流：现场输入 → 特征 → 正常模型 → episode → 处置回写</text>\n<g><rect x=\"10\" y=\"28\" width=\"116\" height=\"98\" rx=\"8\" fill=\"#fdfcf9\" stroke=\"#e3dccd\"/><text x=\"23\" y=\"46\" font-size=\"8.5\" font-family=\"monospace\" fill=\"#a9742c\">01 INPUT</text><text x=\"23\" y=\"64\" font-size=\"11\" fill=\"#1a2428\">采集与工况</text><text x=\"23\" y=\"81\" font-size=\"9\" fill=\"#6f7a7c\">六通道 2 s</text><text x=\"23\" y=\"96\" font-size=\"9\" fill=\"#6f7a7c\">8 段工序记录</text><text x=\"23\" y=\"111\" font-size=\"9\" fill=\"#6f7a7c\">边界 ±24 s 跳过</text></g>\n<path d=\"M128 77 L138 77\" stroke=\"#d3c9b6\" stroke-width=\"1.3\"/><path d=\"M134 72 L140 77 L134 82 Z\" fill=\"#d3c9b6\"/>\n<g><rect x=\"140\" y=\"28\" width=\"116\" height=\"98\" rx=\"8\" fill=\"#fdfcf9\" stroke=\"#e3dccd\"/><text x=\"153\" y=\"46\" font-size=\"8.5\" font-family=\"monospace\" fill=\"#a9742c\">02 FEATURE</text><text x=\"153\" y=\"64\" font-size=\"11\" fill=\"#1a2428\">分段与特征</text><text x=\"153\" y=\"81\" font-size=\"9\" fill=\"#6f7a7c\">20 点 / 40 s 窗</text><text x=\"153\" y=\"96\" font-size=\"9\" fill=\"#6f7a7c\">残差 · σ · 斜率</text><text x=\"153\" y=\"111\" font-size=\"9\" fill=\"#6f7a7c\">3 个通道相关</text></g>\n<path d=\"M258 77 L268 77\" stroke=\"#d3c9b6\" stroke-width=\"1.3\"/><path d=\"M264 72 L270 77 L264 82 Z\" fill=\"#d3c9b6\"/>\n<g><rect x=\"270\" y=\"28\" width=\"116\" height=\"98\" rx=\"8\" fill=\"#eef4ef\" stroke=\"#9fb8ad\"/><text x=\"283\" y=\"46\" font-size=\"8.5\" font-family=\"monospace\" fill=\"#245c5a\">03 MODEL</text><text x=\"283\" y=\"64\" font-size=\"11\" fill=\"#123a3d\">正常工况建模</text><text x=\"283\" y=\"81\" font-size=\"9\" fill=\"#4a585c\">逐工序 μ/Σ</text><text x=\"283\" y=\"96\" font-size=\"9\" fill=\"#4a585c\">收缩 λ=0.08</text><text x=\"283\" y=\"111\" font-size=\"9\" fill=\"#4a585c\">马氏距离 + q99</text></g>\n<path d=\"M388 77 L398 77\" stroke=\"#d3c9b6\" stroke-width=\"1.3\"/><path d=\"M394 72 L400 77 L394 82 Z\" fill=\"#d3c9b6\"/>\n<g><rect x=\"400\" y=\"28\" width=\"116\" height=\"98\" rx=\"8\" fill=\"#fdfcf9\" stroke=\"#e3dccd\"/><text x=\"413\" y=\"46\" font-size=\"8.5\" font-family=\"monospace\" fill=\"#a9742c\">04 DECIDE</text><text x=\"413\" y=\"64\" font-size=\"11\" fill=\"#1a2428\">评分与 episode</text><text x=\"413\" y=\"81\" font-size=\"9\" fill=\"#6f7a7c\">连续 / 相邻合并</text><text x=\"413\" y=\"96\" font-size=\"9\" fill=\"#6f7a7c\">1.0 / 1.15 / 1.35</text><text x=\"413\" y=\"111\" font-size=\"9\" fill=\"#6f7a7c\">提前量</text></g>\n<path d=\"M518 77 L528 77\" stroke=\"#d3c9b6\" stroke-width=\"1.3\"/><path d=\"M524 72 L530 77 L524 82 Z\" fill=\"#d3c9b6\"/>\n<g><rect x=\"530\" y=\"28\" width=\"116\" height=\"98\" rx=\"8\" fill=\"#fdfcf9\" stroke=\"#e3dccd\"/><text x=\"543\" y=\"46\" font-size=\"8.5\" font-family=\"monospace\" fill=\"#a9742c\">05 LOOP</text><text x=\"543\" y=\"64\" font-size=\"11\" fill=\"#1a2428\">处置与回写</text><text x=\"543\" y=\"81\" font-size=\"9\" fill=\"#6f7a7c\">报警卡片</text><text x=\"543\" y=\"96\" font-size=\"9\" fill=\"#6f7a7c\">确认 / 标误报</text><text x=\"543\" y=\"111\" font-size=\"9\" fill=\"#6f7a7c\">重标定 μ/Σ</text></g>\n<text x=\"10\" y=\"151\" font-size=\"9\" fill=\"#99a3a4\">正常段 8 次作业 · 5 训练 / 3 校准 · 阈值 q99（目标 1% 误报）· 事件台账只用于评估，不参与训练</text>\n<text x=\"10\" y=\"166\" font-size=\"9\" fill=\"#99a3a4\">关掉工况感知：退回全局单通道 3σ 对照 → 误报 8 个、检出 0/2（示范页可亲手切换）</text>\n</svg></div><div class=\"figcap\"><b>图 2</b><span>五段里最关键的是 03：正常模型只在正常段上估计，阈值在校准集上取 q99；04 的 episode 不是单点越阈，而是连续/相邻合并后的报警段。关掉工况感知，示范页会退回全局单通道 3σ，误报 8 个、检出 0/2。</span></div>"
         },
         {
           "no": 3,
           "en": "DATA",
           "title": "你需要准备什么",
-          "html": "<p>数据门槛是这一环里最低的：传感器是现成的，也不需要标注异常。真正的准备工作是<b>把工况与事件记录对齐</b>——不然评估时说不清一次报警是误报还是真实前兆。</p><div class='checklist'><div class='cl-head'><span>数据准备清单 · 4 项</span><span class='cl-prog'><span id='cl-txt'>0 / 4</span><span class='cl-bar'><i id='cl-fill'></i></span></span></div><div class='cl-item' data-cl='0'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>作业过程参数</span><span class='cl-s'>悬重、扭矩、立压、套压、返出、池体积，1—5 s 采样</span></span><span class='cl-n'>单井次数十万点</span></div><div class='cl-item' data-cl='1'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>工序记录</span><span class='cl-s'>压井 / 起管柱 / 通井 / 磨铣打捞 / 循环 / 试压的起止时间</span></span><span class='cl-n'>用于工况分段</span></div><div class='cl-item' data-cl='2'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>异常事件台账</span><span class='cl-s'>卡管柱、漏失、气侵的时间与处置过程</span></span><span class='cl-n'>单区块数十起（只用于评估）</span></div><div class='cl-item' data-cl='3'><span class='cl-box'><svg width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12.5l5 5L20 6.5'/></svg></span><span><span class='cl-t'>井况与设备参数</span><span class='cl-s'>井深、管柱组合、泵型、管柱/工具规格</span></span><span class='cl-n'>解释基线变化的上下文</span></div></div>"
+          "html": "<p>数据门槛是这一环里最低的：传感器是现成的，也不需要标注异常。真正的准备工作是<b>把工序记录与事件台账对齐</b>——不然评估时说不清一次报警是误报还是真实前兆。</p><div class=\"checklist\"><div class=\"cl-head\"><span>数据准备清单 · 4 项</span><span class=\"cl-prog\"><span id=\"cl-txt\">0 / 4</span><span class=\"cl-bar\"><i id=\"cl-fill\"></i></span></span></div><div class=\"cl-item\" data-cl=\"0\"><span class=\"cl-box\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12.5l5 5L20 6.5\"/></svg></span><span><span class=\"cl-t\">作业过程参数</span><span class=\"cl-s\">悬重、扭矩、立压、套压、返出、池体积，1—5 s 采样</span></span><span class=\"cl-n\">单井次数十万点</span></div><div class=\"cl-item\" data-cl=\"1\"><span class=\"cl-box\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12.5l5 5L20 6.5\"/></svg></span><span><span class=\"cl-t\">工序记录</span><span class=\"cl-s\">压井 / 起管柱 / 通井 / 磨铣打捞 / 活动管柱 / 震击解卡 / 循环 / 试压的起止时间</span></span><span class=\"cl-n\">用于分段与边界跳过</span></div><div class=\"cl-item\" data-cl=\"2\"><span class=\"cl-box\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12.5l5 5L20 6.5\"/></svg></span><span><span class=\"cl-t\">正常作业样本</span><span class=\"cl-s\">至少 5—10 次无事故作业（示范 8 次合成正常作业，5 训练 / 3 校准）</span></span><span class=\"cl-n\">用于估计 μ/Σ 与 q99</span></div><div class=\"cl-item\" data-cl=\"3\"><span class=\"cl-box\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12.5l5 5L20 6.5\"/></svg></span><span><span class=\"cl-t\">异常事件台账</span><span class=\"cl-s\">卡管柱、漏失、气侵的时间与处置过程</span></span><span class=\"cl-n\">单区块数十起 · 只用于评估</span></div></div><div class=\"callout\"><span class=\"ci\">注意</span><span>不需要异常标签，但<b>正常段必须干净</b>：如果拿带异常的历史作业估计 μ/Σ，阈值会被污染；工序记录与传感器时钟不对齐，窗口跨工序，残差和协方差都会失真。</span></div>"
         },
         {
           "no": 4,
           "en": "DIFFICULTY",
           "title": "技术难度与参考方向",
-          "html": "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px'><span class='dtag' data-d='中'>难度 中</span><span class='small muted'>算法简单，难在误报控制与现场信任</span></div><div class='meter'><i class='on'></i><i class='on'></i></div><p>无监督基线法上手快，但有三处必须处理：<b>一</b>，工况切换是最大的误报源，必须做分段（本文示范里，把工况感知关掉，误报 episode 会从 0 个跳到 4 个）；<b>二</b>，基线会被异常自身污染——如果异常持续 15 分钟，EWMA 会把基线拉过去，异常分数又掉回正常，所以要用「慢基线 + 持续判据」而不是单点比较；<b>三</b>，报警必须带处置建议，否则现场只会把声音关掉。</p><p>验收上不要追求「检测到所有异常」，而要盯三个数字：<b>提前量</b>（报警时刻与事故时刻之差，示范默认 3.4 / 3.7 分钟（中位 3.6 min））、<b>每班误报次数</b>（现场容忍上限通常 2 次/班）、<b>漏报率</b>（宁可误报不可漏报，但误报太多等于没有系统）。建议先只做「关注」级推送（不响铃），观察一周再逐级放开。</p><p style='margin-top:18px'><span class='kicker plain' style='color:var(--ink-4)'>可借鉴的通用技术</span></p><div class='refs'><span class='ref'>流式异常检测</span><span class='ref'>无监督基线（EWMA / 马氏距离）</span><span class='ref'>变点与状态分段</span><span class='ref'>分级预警与阈值标定</span></div><div class='callout'><span class='ci'>说明</span><span>这个案例非常适合作为「时序异常检测」在石油行业的第一个练手项目：数据免费、方法无监督、效果可量化（提前量），而且<b>误报率</b>这个指标能把课程里学的阈值选择、平滑、持续性判据全部串起来。</span></div>"
+          "html": "<div style=\"display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px\"><span class=\"dtag\" data-d=\"中\">难度 中</span><span class=\"small muted\">算法简单，难在工况分段、协方差估计与误报标定</span></div><div class=\"meter\"><i class=\"on\"></i><i class=\"on\"></i></div><p>无监督正常模型上手快，但有三处必须处理：<b>一</b>，工况切换是最大的误报源——示范页关掉工况感知后退回全局单通道 3σ，会出现 8 个 episode、检出 0/2；逐工序模型跳过边界 ±24 s、每工序单独估计 μ/Σ 后，才是 2/2 检出、0 误报。<b>二</b>，21 维协方差需要足够的正常窗口：单工序几百个窗、5 次训练作业，配合收缩 λ=0.08；正常样本太少时协方差不可逆，阈值会虚高或虚低。<b>三</b>，阈值校准不是越低越好：q99 把正常窗口误报压到约 1%，但漏报要看前兆窗口内的 episode；验收要同时看提前量、每 38 井次误报、漏报与 near-miss。</p><p>验收上不要追求「检测到所有异常」，而要盯三个数字：<b>提前量</b>（示范页中位 3.5 min；38 井次现场口径 4.5 min）、<b>误报</b>（38 井次 9→2 次）、<b>漏报</b>（38 井次 2→0 次，另有 1 次 near-miss 避免）。建议先只做「关注」级推送（不响铃），观察一周再逐级放开。</p><p>报警还必须带处置建议并记录结果：没有回写的系统无法区分「误报」与「真前兆但没形成事故」——后者恰恰是最该保留的报警。</p><p style=\"margin-top:18px\"><span class=\"kicker plain\" style=\"color:var(--ink-4)\">可借鉴的通用技术</span></p><div class=\"refs\"><span class=\"ref\">多变量异常检测</span><span class=\"ref\">马氏距离 / 单类模型</span><span class=\"ref\">协方差收缩</span><span class=\"ref\">阈值校准与分级预警</span><span class=\"ref\">报警闭环与回写</span></div><div class=\"callout\"><span class=\"ci\">说明</span><span>这个案例适合作为「时序异常检测」在石油行业的第一个练手项目：不需要异常标签，方法可解释（D² + 通道贡献），效果可量化（提前量/误报/漏报），而且能把工况分段、协方差估计、阈值标定、人工回写串起来。</span></div>"
         }
       ]
     },
     "workflow": {
       "label": "案例流程",
-      "title": "某修井队 38 井次作业的过程监控改造",
+      "title": "某修井队 38 井次作业的早期预警改造",
       "lead": [
-        "改造目标很具体：把「事故发现的时刻」提前到事故发生之前，同时把每班误报压到 2 次以内——否则系统会被现场关掉。",
-        "整个改造没有引入新传感器，用的就是修井机上已经有的悬重、扭矩、立压与排量。"
+        "改造目标很具体：把「事故发现的时刻」提前到事故发生之前，同时把每 38 井次的误报从 9 次压到 2 次——否则系统会被现场关掉。",
+        "整个改造没有引入新传感器，用的就是修井机上已经有的悬重、扭矩、立压、套压、返出与池体积；新增的只有工序记录与正常作业样本。"
       ],
-      "stats": [["作业井次", "38"], ["采样间隔", "2 s"], ["中位提前量（示范）", "3.6 min"], ["误报（现场口径）", "1.3 次/班"]],
+      "stats": [
+        [
+          "作业井次",
+          "38"
+        ],
+        [
+          "采样间隔",
+          "2 s"
+        ],
+        [
+          "中位提前量（现场示范）",
+          "4.5 min"
+        ],
+        [
+          "误报（38 井次）",
+          "9 → 2"
+        ]
+      ],
       "steps": [
         {
-          "name": "数据接入与清洗",
+          "name": "采集与工况上下文",
           "role": "数据",
-          "do": "接入修井机仪表的秒级数据，统一时间基准；剔除传感器掉线、量程溢出与起停泵瞬间的尖峰。",
-          "effect": "得到连续可用的六通道时序，单井次有效数据率 98.6%。",
-          "trap": "起停泵瞬间的压力冲击是正常的，必须标记为「已知扰动」并在检测前剔除，否则每次启泵都会误报。"
+          "do": "接入修井机仪表的秒级六通道，统一时间基准；把压井 / 起管柱 / 通井 / 磨铣打捞 / 活动管柱 / 震击解卡 / 循环 / 试压的起止时间对齐到同一时钟。工序边界 ±24 s 的起停泵冲击标记为已知扰动，整段不评分。",
+          "effect": "得到连续可用的六通道时序与 8 段工况标签；单井次有效数据率 98.6%（示范口径）。",
+          "trap": "边界不跳过，起停泵冲击会被当成异常；工序记录与传感器时钟不对齐，窗口会跨工序，残差和协方差都会失真。"
         },
         {
-          "name": "工况分段",
-          "role": "数据/规则",
-          "do": "示范页直接用人工工序记录（压井/起管柱/通井/磨铣打捞/活动管柱/震击解卡/循环/试压的起止时间）分段；现场可用立压、扭矩、排量的组合规则自动识别，再与人工记录对齐并统计误分。界面上明确标注「人工工序记录」，不把时间表说成自动识别。",
-          "effect": "每个异常只与它所在工序的基线比较，工况切换不再误报。",
-          "trap": "工况边界要留 30 s 缓冲带：切换瞬间参数本来就在剧烈变化，这段不参与检测。"
+          "name": "工序分段与 21 维特征",
+          "role": "数据/特征",
+          "do": "每个工序内滑 20 点（40 s）窗，步长 1 点；抽 21 维：6 个残差（窗口均值 − 本工序正常均值）、6 个标准差、6 个斜率、3 个通道相关（悬重–扭矩、立压–返出、套压–池体积）。",
+          "effect": "把六条原始曲线压成每个窗口 21 个数；残差看偏离、标准差看波动、斜率看趋势、相关看通道是否一起动。",
+          "trap": "特征不是越多越好：21 维已经需要数百个正常窗口才能稳住协方差；再加高阶项会让阈值校准过拟合。"
         },
         {
-          "name": "自适应基线与残差打分",
+          "name": "正常工况建模与阈值校准",
           "role": "算法核心",
-          "do": "每个通道、每个工序内计算 EWMA 慢基线（逐通道 λ=0.004—0.005）与残差 σ，z = (实测 − 慢基线) / σ；主风险分来自联合判据（扭矩↑且悬重↓→卡管柱；立压↓且返出/池体积↓→漏失），单通道 |z| 只作关注提示，不按峰值通道报警。",
-          "effect": "得到一条与工况无关、量纲统一的风险分曲线，可直接比较。",
-          "trap": "λ 不能全通道共用：立压波动快、悬重波动慢，同一条 λ 会让一个通道迟钝、另一个过敏；本示范逐通道 λ=0.004—0.005，只用慢基线，没有实现快基线。"
+          "do": "8 次合成正常作业，5 次训练 / 3 次校准；每个工序只用正常窗口估计 21 维特征的均值与协方差（收缩 λ=0.08），算马氏距离 D²；阈值取校准集 q99，目标 1% 误报；分级线 = 1.15 / 1.35 倍。",
+          "effect": "示范页校准 FPR 约 1.1%；逐工序阈值 55.7—126.8；正常得分中位 0.48×，异常窗口中位 3.36×。",
+          "trap": "不能用异常样本训练，也不能用同一批正常窗口既估计 μ/Σ 又校准阈值；训练 / 校准必须分开，否则 1% 误报是假的。"
         },
         {
-          "name": "持续性判据与分级",
-          "role": "算法",
-          "do": "默认要求联合得分连续 ≥ 6 个采样点（12 s）才产生 episode，并按得分分为关注（z≥2）/ 预警（z≥2.5）/ 报警（z≥3 且持续 ≥ 60 s）三级；滑杆平移时三级阈值一起平移。检出按「联合判据达到预警级且提前 ≥2 min」计。",
-          "effect": "示范默认 2/2 检出、0 个误报 episode、中位提前 3.6 min；现场口径报警数量下降约 70%、召回率 94%。",
-          "trap": "漏失这类「缓变型」异常的单点 z 往往只有 2 左右，持续性判据不能设得太苛刻，否则整类漏检。"
+          "name": "异常评分与 episode",
+          "role": "算法/决策",
+          "do": "D²/阈值 ≥1 连续 ≥10 s 才起 episode；20 s 内相邻段合并；峰值 ≥1.15× 记预警，≥1.35× 且持续 ≥60 s 记报警；报警起点必须落在前兆起点之后、事件发生之前才计入有效检出。",
+          "effect": "示范页 2/2 检出、0 误报 episode、中位提前 3.5 min；关掉工况感知后退回全局单通道 3σ，出现 8 个 episode、0/2 检出。",
+          "trap": "只看单点越阈会漏掉缓变前兆，也会把噪声尖刺变成报警；持续判据与相邻合并是必须的，但持续窗太长会吃掉提前量。"
         },
         {
-          "name": "报警处置与阈值回标",
-          "role": "人工",
-          "do": "司钻收到报警后按提示动作（上提下放活动管柱、控立压/排量、查漏），系统记录处置结果；每月复盘误报，把「已知的正常操作」加入剔除规则，重新标定阈值。",
-          "effect": "现场口径：上线 3 个月，误报从 4.6 次/班降到 1.3 次/班，现场不再关闭系统。",
-          "trap": "报警不记录处置结果，就无法区分「误报」与「真前兆但没形成事故」——后者恰恰是最该保留的报警。"
+          "name": "处置与价值",
+          "role": "人工/闭环",
+          "do": "报警卡片给「疑似什么 + 建议动作」，司钻确认或标误报；误报窗口回写正常校准集，下一轮重标定 μ/Σ 与 q99；确认结果进入事件台账。",
+          "effect": "38 井次示范口径：中位提前 4.5 min、误报 9→2、漏报 2→0、避免 1 次 near-miss；示范页可亲手点「确认 / 误报 / 重标定」。",
+          "trap": "报警不记录处置结果，就无法区分「误报」与「真前兆但没形成事故」；后者最该保留，不能因为没出事就标成误报。"
         }
       ],
       "metrics": {
         "title": "怎么算“做对了”",
-        "html": "<p>时序预警的三个指标必须一起看，只报召回率会掩盖一屋子狼来了的报警：</p><table class='dtable'><thead><tr><th>指标</th><th>定义</th><th>本案例取值</th></tr></thead><tbody><tr><td>中位提前量</td><td>报警时刻与事故时刻之差的中位数</td><td>3.6 min（示范）/ 7.3 min（现场）</td></tr><tr><td>召回率</td><td>台账里的异常事件中被有效提前报警的比例</td><td>2/2（示范 100%）/ 94%（现场）</td></tr><tr><td>误报</td><td>每班需要人工排除的报警次数</td><td>0 个 episode（示范 60 min）/ 1.3 次/班（现场）</td></tr><tr><td>报警到动作</td><td>从报警到司钻采取处置的平均时间</td><td>48 s（现场口径）</td></tr></tbody></table><p>最后一行容易被忽略：<b>报警的价值取决于处置速度</b>。提前 3—4 分钟但如果没有人知道该干什么，等于没有提前。所以报警文案里必须写清「疑似什么 + 建议做什么」。</p>"
+        "html": "<p>三个指标必须一起看，只报召回率会掩盖一屋子狼来了的报警：</p><table class=\"dtable\"><thead><tr><th>指标</th><th>定义</th><th>示范合成集（本页）</th><th>现场口径（38 井次）</th></tr></thead><tbody><tr><td>中位提前量</td><td>事件时刻 − 报警起点</td><td>3.5 min（2/2）</td><td>4.5 min</td></tr><tr><td>检出 / 漏报</td><td>前兆起点之后、事件之前出现预警级 episode</td><td>2/2 · 漏报 0</td><td>漏报 2 次 → 0 次</td></tr><tr><td>误报</td><td>未匹配真值的 episode</td><td>0 个 episode</td><td>9 次 → 2 次（38 井次合计）</td></tr><tr><td>阈值校准 FPR</td><td>正常校准窗口中 D² 越 q99 的比例</td><td>1.1%</td><td>按现场正常作业重标定</td></tr><tr><td>near-miss</td><td>报警后人工干预、未形成事故</td><td>—</td><td>避免 1 次</td></tr></tbody></table><p><b>口径必须分开：</b>本页读数是 8 次合成正常作业 + 1 次含 2 起事件的合成作业；现场口径是 38 井次作业的示范统计，两者不是同一批数据。现场上线前要用真实正常作业重估 μ/Σ 与 q99，不能把本页的 1.1% 当成现场保证。</p>"
       },
       "fails": [
-        { "name": "工况切换误报", "why": "磨铣转停钻/活动管柱时扭矩骤降，死阈值或单点检测会立刻报警；必须靠工况分段 + 切换缓冲带抑制。" },
-        { "name": "基线被异常污染", "why": "持续十几分钟的漏失会把 EWMA 基线拉低，异常分数反而回落；用慢基线 + 持续判据可以缓解，但不能完全消除。" },
-        { "name": "只报警不给处置建议", "why": "司钻在作业中不会去分析曲线，报警文案必须是「现象 + 建议动作」两段式，否则系统会被静音。" }
+        {
+          "name": "工况切换误报",
+          "why": "磨铣转停钻/活动管柱时扭矩骤降，起管柱时立压接近 0；全局单通道 3σ 会把这些正常工况当成异常，示范页关掉工况感知就是 8 个 episode、0/2 检出。"
+        },
+        {
+          "name": "正常样本不足 / 协方差不可逆",
+          "why": "21 维协方差需要数百个正常窗口；样本太少时矩阵不可逆，阈值会虚高或虚低。用收缩 λ=0.08 与足够窗口，但不要指望三五个作业就能标定。"
+        },
+        {
+          "name": "阈值校准与漏报的权衡",
+          "why": "把 q99 降到 q95 会减少漏报但误报上升；只看 FPR 会把系统调成一屋子狼来了。必须同时看提前量、每 38 井次误报、漏报与 near-miss。"
+        },
+        {
+          "name": "报警不带处置建议 / 不回写",
+          "why": "司钻在作业中不会去分析曲线；报警必须是「现象 + 建议动作」两段式，并把确认/误报回写，否则系统会被静音，也无法区分误报与真前兆。"
+        }
       ]
     },
     "demo": {
@@ -103,8 +152,8 @@
       "html": "demo/index.html",
       "js": "demo/demo.js",
       "label": "可运行示范",
-      "intro": "播放一次 60 分钟、2 s/点的修井作业：六通道参数、逐工序 EWMA 慢基线 ±2σ、多变量联合判据与 episode 级报警。可切 0.5×/1×/2×、拖时间轴、悬停读数；关掉工况感知可看到误报增加而检出归零。",
-      "height": 1080
+      "intro": "播放一次 60 分钟、2 s/点的修井作业：六通道时间轴、工序带与边界跳过、21 维滑窗特征、逐工序正常模型与马氏距离、1% 误报校准、episode 合并/分级/提前量；可切 0.5×/1×/2×、拖时间轴、悬停读数。关掉工况感知可看到误报 8 个、检出 0/2。",
+      "height": 1220
     }
   }
 }

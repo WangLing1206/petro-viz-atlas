@@ -3,120 +3,231 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>示范：修井作业方案智能推荐（案例推理）</title>
+<title>示范：从修井日报到施工方案（修井方案智能推荐）</title>
 <link rel="stylesheet" href="demo.css">
 <style>
-  /* 两栏：左侧图谱 + 相似度，右侧方案 + 历史 + 台账 */
-  .dgrid.c2{grid-template-columns:minmax(0,1fr) minmax(0,384px)}
+  /* 两栏：左侧图谱 + 井筒，右侧五段面板 + 模型档案 + 日志 */
+  .dgrid.c2{grid-template-columns:minmax(0,1fr) minmax(0,392px)}
   @media (max-width:900px){.dgrid.c2{grid-template-columns:minmax(0,1fr)}}
 
-  .gwrap{border:1px solid var(--line);border-radius:8px;background:var(--card-soft);padding:6px 8px 2px;overflow-x:auto}
-  #graph{min-width:560px;width:100%;height:auto;display:block}
-  .gnode{cursor:pointer}
-  .gnode rect{transition:fill .2s,stroke .2s}
-  .gnode:focus{outline:none}
-  .gnode:focus rect{stroke:#123a3d;stroke-width:2.2}
-  .gedge{fill:none;stroke:#dcd6c7;stroke-width:1}
-  .gedge.chain{stroke:#8fb3aa;stroke-width:1.25}
-  .gedge.hot{stroke:var(--jade);stroke-width:1.9;stroke-dasharray:5 4;animation:dash 1.1s linear infinite}
-  .gedge.dist{stroke:#9dbcb4}
-  .gedge.dist.strong{stroke:#3f7d72}
-  .gedge.dist.on{stroke:var(--jade);stroke-dasharray:4 3}
-  .gedge.dist.dim{stroke:#e0dacd}
-  .gedge.alt{stroke:#c9b793;stroke-width:1}
-  .gedge.dim{stroke:#e6e0d3;stroke-width:0.8;opacity:.6}
-  .gnode.dim{opacity:.4}
-  .gnode.alt rect{stroke:#c9b793}
-  @keyframes dash{to{stroke-dashoffset:-18}}
-
-  .dfig-foot i.gbl{height:9px;border:1px dashed #6f9e94;background:none;border-radius:2px}
-  .dfig-foot i.mut{background:#e5ebf0;border:1px solid #cdd8e2;opacity:.45}
-  .ghint{display:none}
-
-  /* 控制条：5 个故障按钮必须能换行，不能溢出 */
-  .dctl{gap:12px 16px}
+  /* ---------- 控制条 ---------- */
+  .dctl{gap:9px 14px}
   .dctl .grp{flex-wrap:wrap;min-width:0}
   .dctl .seg{flex-wrap:wrap}
   .dctl-sub{margin-top:-6px}
-  .seg-casing button{font-family:var(--mono);font-size:10.5px}
-  .seg-sub{font-family:var(--mono);font-size:9px;opacity:.62;margin-left:4px}
-  .ctl-sel{font-family:var(--sans);font-size:11.5px;color:var(--ink);background:var(--card);
-    border:1px solid var(--line-2);border-radius:100px;padding:4px 10px;outline:none;max-width:190px}
+  .seg-casing button{font-family:var(--mono);font-size:10px}
+  .seg-sub{font-family:var(--mono);font-size:8.5px;opacity:.62;margin-left:3px}
+  .seg button{padding:4px 9px;font-size:11px}
+  .ctl-sel{font-family:var(--sans);font-size:11px;color:var(--ink);background:var(--card);
+    border:1px solid var(--line-2);border-radius:100px;padding:4px 9px;outline:none;max-width:180px}
   .ctl-sel:focus-visible{outline:2px solid var(--jade);outline-offset:2px}
   .ctl-sel:disabled{opacity:.45;cursor:not-allowed}
-  .ctl-hint{font-size:10px;color:var(--ink-4)}
+  .ctl-hint{font-size:9.5px;color:var(--ink-4);line-height:1.5}
   .ctl-hint.off{opacity:.55}
   .grp.off .glbl,.grp.off .ctl-sel{opacity:.5}
+  .dctl input[type=range]{width:104px}
+  .dctl .ctl-s output{min-width:34px}
   button.tog{border:0;background:none;padding:0;font:inherit;color:var(--ink-2);cursor:pointer}
   button.tog:focus-visible{outline:2px solid var(--jade);outline-offset:3px;border-radius:5px}
 
-  /* 相似度分项：条长 = 加权贡献 w·p */
-  .fbar{display:grid;grid-template-columns:64px minmax(46px,1fr) 136px;gap:8px;align-items:center;
-    font-size:10.5px;color:var(--ink-3);padding:2px 0}
-  .fbar .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;color:var(--ink-3);white-space:nowrap}
-  .fbar .track{height:7px;border-radius:4px;background:var(--paper-3);overflow:hidden}
-  .fbar .track i{display:block;height:100%;border-radius:4px;background:var(--jade)}
-  .fbar .val{font-family:var(--mono);font-size:9.5px;color:var(--ink-2);text-align:right;white-space:nowrap}
+  /* ---------- 图谱 ---------- */
+  .gwrap{border:1px solid var(--line);border-radius:7px;background:var(--card-soft);padding:4px 6px 0;overflow-x:auto}
+  #graph{min-width:556px;width:100%;height:auto;display:block}
+  .gstrip{display:flex;flex-wrap:nowrap;gap:4px;margin-bottom:4px;min-height:17px;overflow-x:auto;scrollbar-width:none}
+  .gstrip::-webkit-scrollbar{display:none}
+  .gstrip .ec{font-family:var(--mono);font-size:8.5px;color:var(--ink-3);border:1px solid var(--line);
+    background:var(--card-soft);border-radius:4px;padding:1px 5px;white-space:nowrap}
+  .gstrip .ec b{color:var(--jade-d);font-weight:600}
+  .gnode{cursor:pointer}
+  .gnode rect{transition:fill .18s,stroke .18s}
+  .gnode:focus{outline:none}
+  .gnode:focus rect{stroke:#123a3d;stroke-width:2}
+  .gedge{fill:none;stroke:#dcd6c7;stroke-width:1}
+  .gedge.chain{stroke:#8fb3aa;stroke-width:1.25}
+  .gedge.hot{stroke:var(--jade);stroke-width:1.9;stroke-dasharray:5 4;animation:dash 1.1s linear infinite}
+  .gedge.dim{stroke:#e6e0d3;stroke-width:.8;opacity:.6}
+  .gedge.case{stroke:#cfc6b4;stroke-width:1}
+  .gedge.case.hot{stroke:var(--jade);stroke-width:2;stroke-dasharray:5 3}
+  @keyframes dash{to{stroke-dashoffset:-18}}
+  .dfig-foot{gap:8px;font-size:10px}
+  .dfig-foot i.mut{background:#e5ebf0;border:1px solid #cdd8e2;opacity:.45}
+  .ghint{display:none}
+
+  /* ---------- 井筒示意 ---------- */
+  .wwrap{border:1px solid var(--line);border-radius:7px;background:var(--card-soft);padding:4px 6px 2px}
+  #well{width:100%;height:auto;display:block;min-width:500px}
+  .wwrap{overflow-x:auto}
+
+  /* ---------- 01 输入 ---------- */
+  .tlab{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-family:var(--mono);
+    font-size:8.5px;letter-spacing:.09em;color:var(--ink-4);margin:0 0 4px}
+  .rpt{width:100%;min-height:84px;resize:vertical;font-family:var(--sans);font-size:10.2px;line-height:1.52;
+    color:var(--ink);background:var(--card-soft);border:1px solid var(--line-2);border-radius:6px;padding:7px 8px;outline:none}
+  .rpt:focus{border-color:var(--jade);box-shadow:0 0 0 3px rgba(36,92,90,.08)}
+  .exrow{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:6px 0 7px}
+  .exrow .glbl{font-family:var(--mono);font-size:8px;letter-spacing:.1em;color:var(--ink-4);margin-right:2px}
+  .exrow button{font-size:10px;padding:3px 8px;border:1px solid var(--line-2);border-radius:100px;
+    background:var(--card);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+  .exrow button:hover{border-color:var(--jade);color:var(--jade-d)}
+  .exrow button.on{background:var(--jade);border-color:var(--jade);color:#fff}
+  .exrow .dbtn{margin-left:auto;padding:3px 8px;font-size:10px}
+  .qrow{display:flex;justify-content:space-between;gap:8px;font-size:10px;padding:2px 0;border-bottom:1px dashed var(--line)}
+  .qrow:last-child{border-bottom:0}
+  .qrow .k{color:var(--ink-4);font-family:var(--mono);font-size:8px;letter-spacing:.03em;white-space:nowrap;padding-top:2px}
+  .qrow .v{color:var(--ink-2);text-align:right;line-height:1.5}
+  .fvals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .frow{display:grid;grid-template-columns:34px minmax(0,1fr);grid-template-rows:auto auto;gap:0 5px;
+    background:var(--card);padding:3px 5px;min-width:0}
+  .frow .fk{grid-row:1/3;font-family:var(--mono);font-size:7.2px;letter-spacing:.04em;color:var(--ink-4);padding-top:2px}
+  .frow .fv{font-size:9.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+  .frow .fs{font-family:var(--mono);font-size:7px;letter-spacing:.03em;line-height:1.3}
+  .frow .fs.src-text{color:var(--jade-d)}
+  .frow .fs.src-manual{color:var(--clay-d)}
+  .frow .fs.src-over{color:var(--bad)}
+  .qrule{display:flex;gap:6px;font-size:9.5px;line-height:1.55;color:var(--ink-3);padding:2px 0}
+  .qrule .qi{font-family:var(--mono);font-size:8px;width:12px;flex-shrink:0;text-align:center;color:var(--ok)}
+  .qrule.bad .qi{color:var(--bad)}
+  .qrule.warn .qi{color:var(--warn)}
+
+  /* ---------- 02 NLP ---------- */
+  .hl{font-size:10.5px;line-height:1.95;color:var(--ink-2);background:var(--card-soft);border:1px solid var(--line);
+    border-radius:6px;padding:6px 8px;max-height:128px;overflow:auto}
+  .hl mark{background:none;color:inherit;border-radius:2px;padding:0 1px;border-bottom:2px solid}
+  mark.efault{background:#f8e3dc;border-color:#c0715d;color:#8f3d2f}
+  mark.ewell{background:#e2eeea;border-color:#4d8b7e;color:#1d4e50}
+  mark.etool{background:#e4ebf2;border-color:#5f83a0;color:#2f5268}
+  mark.eproc{background:#f6ead4;border-color:#c49a58;color:#7a521c}
+  mark.econs{background:#ece6f2;border-color:#8c78a5;color:#5a4676}
+  .hl-legend{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:9px;color:var(--ink-4);margin:4px 0 0}
+  .hl-legend span{display:inline-flex;align-items:center;gap:4px}
+  .hl-legend i{width:9px;height:9px;border-radius:2px;display:block;border:1px solid}
+  .entlist{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 9px;border-top:1px solid var(--line);margin-top:3px;min-width:0}
+  .entcol{min-width:0}
+  .eg-h{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:7.5px;letter-spacing:.08em;
+    color:var(--ink-4);padding:5px 0 2px}
+  .eg-h i{width:6px;height:6px;border-radius:2px;display:block;flex-shrink:0}
+  .eg-h b{font-weight:500;color:var(--ink-3);letter-spacing:0;font-family:var(--sans);font-size:9px;white-space:nowrap}
+  .er{display:grid;grid-template-columns:58px minmax(0,1fr) 20px 26px;gap:3px;align-items:baseline;
+    font-size:8.8px;padding:2px 0;border-bottom:1px solid var(--line);line-height:1.4}
+  .er:last-child{border-bottom:0}
+  .er .es{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .er .es.same{grid-column:1/3;color:var(--ink);font-size:9px}
+  .er .ea{color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .er .ea b{color:var(--jade-d);font-weight:600}
+  .er .em{font-family:var(--mono);font-size:6.5px;color:var(--ink-4);text-align:right}
+  .er .ec{font-family:var(--mono);font-size:7.4px;color:var(--ink-3);text-align:right}
+
+  /* ---------- 03 检索 ---------- */
+  .hits{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9.5px}
+  .hits th{font-family:var(--mono);font-size:7.5px;font-weight:400;letter-spacing:.05em;color:var(--ink-4);
+    text-align:left;padding:3px 6px 4px 0;border-bottom:1px solid var(--line-2);white-space:nowrap}
+  .hits td{padding:4px 6px 4px 0;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+  .hits tr[data-case]{cursor:pointer}
+  .hits tr[data-case]:hover td{background:var(--card-soft)}
+  .hits tr.sel td{background:var(--jade-l)}
+  .hits .num{font-family:var(--mono);text-align:right;white-space:nowrap}
+  .hits .cid{font-family:var(--mono);font-size:9px;color:var(--ink);white-space:nowrap}
+  .hits .csub{font-size:8px;color:var(--ink-4);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hits .excl{color:var(--bad);font-family:var(--mono);font-size:7.5px}
+  .fbar{display:grid;grid-template-columns:54px minmax(28px,1fr) 96px;gap:6px;align-items:center;
+    font-size:9.5px;color:var(--ink-3);padding:1px 0}
+  .fbar .lbl{font-family:var(--mono);font-size:8px;letter-spacing:.03em;color:var(--ink-3);white-space:nowrap}
+  .fbar .track{height:5px;border-radius:3px;background:var(--paper-3);overflow:hidden}
+  .fbar .track i{display:block;height:100%;border-radius:3px;background:var(--jade)}
+  .fbar .val{font-family:var(--mono);font-size:7.8px;color:var(--ink-2);text-align:right;white-space:nowrap}
   .fbar .val b{color:var(--jade-d)}
-  .fbar.zero{opacity:.55}
-  .fbar.zero .track{background:var(--paper-2)}
-  .fbar.fhead{font-family:var(--mono);font-size:8.5px;color:var(--ink-4);border-bottom:1px solid var(--line);padding-bottom:3px;margin-bottom:2px}
-  .fbar.fhead .val{font-size:8.5px;color:var(--ink-4)}
-  .simhead{display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:var(--ink-2);margin-bottom:5px;flex-wrap:wrap}
+  .fbar.zero{opacity:.5}
+  .simhead{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:10.5px;color:var(--ink-2);margin-bottom:5px}
   .simhead b{font-family:var(--mono);color:var(--jade-d)}
-  .simhead .simnote{font-size:9.5px;color:var(--ink-4)}
-  .simsum{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);
-    border-top:1px solid var(--line);margin-top:7px;padding-top:5px}
-  .simsum b{color:var(--jade-d)}
+  .simhead .simnote{font-size:8.5px;color:var(--ink-4)}
+  .formula{font-family:var(--mono);font-size:8.5px;color:var(--ink-3);border-top:1px solid var(--line);
+    margin-top:5px;padding-top:4px;line-height:1.7;word-break:break-word}
+  .formula b{color:var(--jade-d)}
+  .tterms{display:grid;grid-template-columns:minmax(0,1fr) 34px 34px 36px;gap:4px;font-family:var(--mono);font-size:8px;
+    color:var(--ink-3);border-top:1px dashed var(--line);margin-top:5px;padding-top:4px}
+  .tterms .th{color:var(--ink-4);font-size:7px;letter-spacing:.04em}
+  .tterms .w{text-align:right}
+  .tterms .tm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
+  .pathline{display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:9px;color:var(--ink-3);margin-top:6px;line-height:1.6}
+  .pathline .pc{font-size:8.8px;border:1px solid var(--line);background:var(--card-soft);border-radius:3px;padding:1px 4px;white-space:nowrap}
+  .pathline .pc.hot{border-color:#9dc0b7;background:var(--jade-l);color:var(--jade-d)}
+  .pathline .ar{color:var(--line-3);font-family:var(--mono);font-size:8px}
+  .excluded{font-size:8.8px;color:var(--ink-4);line-height:1.5;margin-top:4px}
+  .empty{font-size:10.5px;color:var(--ink-4);padding:8px 0;line-height:1.6}
 
-  /* 分故障权重表 */
-  .wtable-wrap{overflow-x:auto;margin-top:6px}
-  .wtable{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:9.5px}
-  .wtable th{font-weight:400;color:var(--ink-4);text-align:right;padding:3px 4px;border-bottom:1px solid var(--line-2);white-space:nowrap}
-  .wtable th:first-child{text-align:left}
-  .wtable td{color:var(--ink-2);text-align:right;padding:3px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
-  .wtable td:first-child{text-align:left;color:var(--ink-3)}
-  .wtable tr.on td{background:var(--jade-l);color:var(--jade-d);font-weight:600}
-  .wtable tr:last-child td{border-bottom:0}
+  /* ---------- 04 方案 ---------- */
+  .plancard{border:1px solid var(--line);border-radius:7px;background:var(--card-soft);padding:7px 8px}
+  .planhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .planhead .rank{font-family:var(--mono);font-size:8.5px;color:var(--ink-4);letter-spacing:.06em}
+  .planhead b{font-size:12px;color:var(--ink)}
+  .planhead .score{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--jade-d)}
+  .ptags{display:flex;gap:4px 5px;flex-wrap:wrap;margin-top:4px;line-height:1.7;align-items:center}
+  .pm{font-size:9.5px;color:var(--ink-3);line-height:1.55;margin-top:3px}
+  .pm b{color:var(--ink-2)}
+  .steps{list-style:none;margin:6px 0 0;border-top:1px dashed var(--line);padding-top:5px}
+  .steps li{display:grid;grid-template-columns:15px minmax(0,1fr);gap:6px;padding:3px 0;border-bottom:1px solid var(--line)}
+  .steps li:last-child{border-bottom:0}
+  .steps .sn{font-family:var(--mono);font-size:8px;color:var(--jade);padding-top:2px}
+  .steps .sb{font-size:10px;color:var(--ink);line-height:1.5}
+  .steps .sb b{font-size:10px}
+  .steps .stool{font-family:var(--mono);font-size:7.8px;color:var(--opt);background:#eef3f7;border-radius:3px;padding:0 4px;margin-left:4px}
+  .steps .sd{display:block;font-size:9px;color:var(--ink-3);line-height:1.5;margin-top:1px}
+  .toolcombo{font-size:9px;color:var(--ink-2);line-height:1.55;background:var(--card);border:1px solid var(--line);
+    border-radius:5px;padding:4px 6px;margin-top:5px}
+  .toolcombo b{color:var(--jade-d)}
+  .diffbox{border-left:2.5px solid var(--clay);background:var(--clay-l);border-radius:0 5px 5px 0;
+    padding:4px 7px;font-size:9px;line-height:1.55;color:var(--ink-2);margin:5px 0 0}
+  .diffbox b{color:var(--clay-d)}
+  .alt{border:1px solid var(--line);border-radius:6px;background:var(--card);padding:5px 7px;margin-top:5px;cursor:pointer}
+  .alt:hover{border-color:var(--line-3)}
+  .alt.sel{border-color:var(--jade);box-shadow:0 0 0 2px rgba(36,92,90,.08)}
+  .alt-h{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+  .alt-h .rank{font-family:var(--mono);font-size:8px;color:var(--ink-4)}
+  .alt-h b{font-size:10.5px;color:var(--ink)}
+  .alt-h .score{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--ink-3)}
+  .alt-d{font-size:8.8px;color:var(--ink-3);line-height:1.5;margin-top:2px}
+  .alt-t{font-size:8.5px;color:var(--opt);line-height:1.45;margin-top:2px}
+  .risk{display:grid;grid-template-columns:30px minmax(0,1fr);gap:6px;padding:3px 0;border-bottom:1px dashed var(--line);font-size:9px;line-height:1.5}
+  .risk:last-child{border-bottom:0}
+  .risk .rl{font-family:var(--mono);font-size:7px;text-align:center;border-radius:3px;padding:1px 0;height:15px}
+  .risk .rl.high{color:var(--bad);background:var(--bad-bg)}
+  .risk .rl.mid{color:var(--warn);background:var(--warn-bg)}
+  .risk .rt{color:var(--ink-2)}
+  .risk .rt b{color:var(--ink);font-size:9.2px}
 
-  /* 方案卡 */
-  .plan{cursor:pointer;transition:border-color .15s,box-shadow .15s}
-  .plan.sel{border-color:var(--jade);box-shadow:0 0 0 3px rgba(20,112,92,.09)}
-  .plan:focus-visible{outline:2px solid var(--jade);outline-offset:2px}
-  .plan .top h4{font-size:12.5px}
-  .plan .tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
-  .plan .pmeta{font-size:10.5px;color:var(--ink-3);line-height:1.55;margin-top:3px}
-  .plan .pmeta b{color:var(--ink-2)}
-  .plan .pmeta.check{color:var(--jade-d);font-family:var(--mono);font-size:9.5px}
-  .db.score{color:var(--jade-d);border-color:#c8dbd2;background:var(--jade-l)}
+  /* ---------- 05 闭环 ---------- */
+  .dval.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dval.four>div{padding:6px 8px}
+  .dval.four .v{font-size:13px}
+  .dval.four .s{font-size:8.5px}
+  .dval.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dval.two>div{padding:5px 7px}
+  .dval.two .v{font-size:12px}
+  .dval.two .s{font-size:8px}
+  .dfeed select{font-size:9.5px;padding:3px 5px;border:1px solid var(--line-2);border-radius:5px;background:var(--card);color:var(--ink-2);max-width:112px}
+  .dfeed .dbtn{padding:4px 8px;font-size:9.5px}
+  .wbq{border-top:1px solid var(--line);margin-top:4px}
+  .wbq .wr{display:grid;grid-template-columns:40px minmax(0,1fr) 38px;gap:5px;font-size:8.8px;
+    color:var(--ink-3);padding:3px 0;border-bottom:1px dashed var(--line);line-height:1.45}
+  .wbq .wr:last-child{border-bottom:0}
+  .wbq .wid{font-family:var(--mono);font-size:7.8px;color:var(--ink-4)}
+  .wbq .wk{font-size:7.5px;font-family:var(--mono);text-align:right}
+  .wbq .wk.adopt{color:var(--ok)}.wbq .wk.modify{color:var(--warn)}.wbq .wk.reject{color:var(--bad)}
+  .wbq .wempty{font-size:8.8px;color:var(--ink-4);padding:4px 0}
 
-  /* 历史表 / 台账 */
-  .caserow{cursor:pointer}
-  .caserow:hover td{background:var(--card-soft)}
-  .caserow.sel td{background:var(--jade-l)}
-  .csub{font-size:9px;color:var(--ink-4);margin-top:1px;white-space:normal}
-  .mini-bad{color:var(--bad);font-size:9px}
-  .excluded{font-size:9.5px;color:var(--ink-4);line-height:1.55;margin-top:6px;border-top:1px dashed var(--line);padding-top:5px}
-  .excluded:empty{display:none}
-  .ledger-wrap{max-height:252px;overflow:auto}
-  .ltable{width:100%;border-collapse:collapse;font-size:10px}
-  .ltable th{font-family:var(--mono);font-size:8px;font-weight:400;letter-spacing:.04em;color:var(--ink-4);
-    text-align:left;padding:4px 5px 4px 0;border-bottom:1px solid var(--line-2);white-space:nowrap;position:sticky;top:0;background:var(--card)}
-  .ltable td{padding:4px 5px 4px 0;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
-  .ltable td b{color:var(--ink);font-weight:600;white-space:nowrap}
-  .ltable .num{text-align:right;font-family:var(--mono)}
-  .ltable .lsub{font-size:8.5px;color:var(--ink-4);font-family:var(--mono);white-space:nowrap}
-  .ltable tr.sel td{background:var(--jade-l)}
-  .ltable tbody tr{cursor:pointer}
-  .ltable tbody tr:hover td{background:var(--card-soft)}
-  .ltable tbody tr:focus-visible{outline:2px solid var(--jade);outline-offset:-2px}
-  .empty{font-size:11px;color:var(--ink-4);padding:10px 0;line-height:1.6}
+  .dmodel{padding:6px 9px 5px}
+  .dmodel-row{padding:2px 0;font-size:9.2px}
+  .dmodel-row .k{font-size:7.2px;padding-top:1px}
+  .dmodel-row .v{line-height:1.35}
+  .dtrace{max-height:118px}
+  .dstage-lede{font-size:10.6px;line-height:1.56;margin:2px 0 6px}
 
   @media (max-width:900px){
-    .fbar{grid-template-columns:56px minmax(40px,1fr) 126px}
-    .dctl{gap:8px 12px}
-    .ghint{display:block;font-size:9.5px;color:var(--ink-4);text-align:center;padding:4px 0 0}
-    .gwrap{scrollbar-width:thin}
+    #graph,#well{min-width:520px}
+    .ghint{display:block;font-size:9px;color:var(--ink-4);text-align:center;padding:3px 0 0}
+    .dctl{gap:8px 10px}
+    .fvals{grid-template-columns:minmax(0,1fr)}
+    .dval.four{grid-template-columns:minmax(0,1fr)}
   }
 </style>
 </head>
@@ -124,27 +235,30 @@
 
 <div class="dhead">
   <div>
-    <div class="dkick">CASE-BASED REASONING · 案例推理</div>
-    <h1>井况 → 相似作业 → 候选方案</h1>
-    <p class="lead">上方设定井况；<b>左侧</b>是「故障现象—候选工艺—工具—效果」知识图谱与相似度分项，<b>右侧</b>是候选方案、同族历史作业与工具台账。
-    点方案卡片或历史作业行，可以看它在图谱上走的是哪条路径、各特征究竟贡献了多少相似度。</p>
+    <div class="dkick">NLP + KNOWLEDGE GRAPH + CBR · 日报 → 实体 → 检索 → 方案 → 回写</div>
+    <h1>修井日报 → 施工方案</h1>
+    <p class="lead">这不是「输几个参数、捞一串相似井」。示范把一段修井日报的实体抽取（词典 + 正则，命中片段可回看）、7 维加权结构相似度与 16 份案例报告的 TF-IDF 余弦合成排序、按工序组装的施工方案、人工采纳回写串成一条可运行的流水线。</p>
   </div>
   <div class="dhead-r">
-    <div class="dstat"><div class="k">案例库</div><div class="v"><span id="st-count">16</span><small>井次</small></div></div>
-    <div class="dstat"><div class="k">Top-1 相似度</div><div class="v" id="st-sim">—</div></div>
-    <div class="dstat"><div class="k">历史工期区间</div><div class="v" id="st-days">—</div></div>
+    <div class="dstat"><div class="k">示范案例库</div><div class="v"><span id="st-count">16</span><small>井次</small></div></div>
+    <div class="dstat good"><div class="k">Top-1 综合相似度</div><div class="v" id="st-sim">—</div></div>
+    <div class="dstat"><div class="k">抽取实体</div><div class="v" id="st-ent">—</div></div>
+    <div class="dstat warn"><div class="k">留一 Hit@3</div><div class="v" id="st-hit">—</div></div>
   </div>
 </div>
 
 <div class="dctl">
   <div class="grp grp-fault"><span class="glbl" id="lbl-fault">故障现象</span><div class="seg" id="seg-fault" role="group" aria-labelledby="lbl-fault"></div></div>
   <div class="grp"><span class="glbl" id="lbl-casing">套管规格 · 通径/mm</span><div class="seg seg-casing" id="seg-id" role="group" aria-labelledby="lbl-casing"></div></div>
-  <div class="ctl-s"><label for="r-depth">井深</label><input type="range" id="r-depth" min="1200" max="3600" step="50" value="2400" aria-label="井深（米）"><output id="o-depth" for="r-depth">2400 m</output></div>
-  <div class="ctl-s"><label for="r-water">含水</label><input type="range" id="r-water" min="0" max="100" step="1" value="30" aria-label="含水率（百分比）"><output id="o-water" for="r-water">30%</output></div>
-  <button type="button" class="tog" id="tog-sand" role="switch" aria-checked="false" aria-label="是否出砂"><i aria-hidden="true"></i><span>出砂</span></button>
+  <span class="sp"></span>
+  <button class="dbtn pri" id="btn-run" type="button">▶ 运行全流程</button>
+  <button class="dbtn" id="btn-reset" type="button">重置</button>
 </div>
 
 <div class="dctl dctl-sub">
+  <div class="ctl-s"><label for="r-depth">井深</label><input type="range" id="r-depth" min="1000" max="3600" step="50" value="2100" aria-label="井深（米）"><output id="o-depth" for="r-depth">2100 m</output></div>
+  <div class="ctl-s"><label for="r-water">含水</label><input type="range" id="r-water" min="0" max="100" step="1" value="12" aria-label="含水率（百分比）"><output id="o-water" for="r-water">12%</output></div>
+  <button type="button" class="tog" id="tog-sand" role="switch" aria-checked="false" aria-label="是否出砂"><i aria-hidden="true"></i><span>出砂</span></button>
   <div class="grp" id="grp-litter">
     <label class="glbl" for="sel-form">落物形态</label>
     <select id="sel-form" class="ctl-sel" aria-label="落物形态">
@@ -157,48 +271,127 @@
   </div>
   <div class="ctl-s"><label for="r-size">落物外径</label><input type="range" id="r-size" min="10" max="140" step="1" value="73" aria-label="落物外径（毫米）"><output id="o-size" for="r-size">73 mm</output></div>
   <span class="ctl-hint" id="litter-hint">仅落物/断脱类参与相似度</span>
-  <span class="sp"></span>
-  <button type="button" class="dbtn" id="btn-reset">重置井况</button>
+</div>
+
+<div class="dflow" id="flow" role="tablist" aria-label="修井方案智能推荐流程">
+  <button type="button" class="on" data-s="0" role="tab" aria-selected="true"><span class="n"><i>01</i>INPUT</span><b>日报与井况</b><span>文本 + 七字段质控</span></button>
+  <button type="button" data-s="1" role="tab" aria-selected="false"><span class="n"><i>02</i>NLP</span><b>实体抽取</b><span>词典 + 正则</span></button>
+  <button type="button" data-s="2" role="tab" aria-selected="false"><span class="n"><i>03</i>RETRIEVAL</span><b>图谱检索与相似度</b><span>结构 0.70 + 文本 0.30</span></button>
+  <button type="button" data-s="3" role="tab" aria-selected="false"><span class="n"><i>04</i>PLAN</span><b>方案组装</b><span>主方案 + 备选 + 风险</span></button>
+  <button type="button" data-s="4" role="tab" aria-selected="false"><span class="n"><i>05</i>LOOP</span><b>人工采纳与回写</b><span>价值与闭环</span></button>
 </div>
 
 <div class="dgrid c2">
   <div class="dcol">
     <div class="dfig">
-      <div class="dfig-h"><b>知识图谱：故障 → 候选工艺 → 工具 → 效果</b><span>虚线框 = 全局工序 · 点故障切换映射 · 悬停看规格 · 点工具定位案例</span></div>
-      <div class="gwrap"><svg id="graph" viewBox="0 0 600 500" role="img" aria-label="修井知识图谱：故障现象、按施工顺序排列的候选工艺、工具与历史效果分布"></svg></div>
+      <div class="dfig-h"><b>知识图谱 · 实体 → 工序 → 工具 → 案例（方案路径）</b><span>点故障切换 · 点工具/案例定位 · 虚线 = 命中路径</span></div>
+      <div class="gstrip" id="gstrip"></div>
+      <div class="gwrap"><svg id="graph" viewBox="0 0 600 380" role="img" aria-label="修井知识图谱：故障实体、按施工顺序排列的工序、工具与历史案例"></svg></div>
       <div class="ghint">← 横向滑动查看完整图谱 →</div>
       <div class="dfig-foot">
-        <span><i style="background:#f5e6e1;border:1px solid #dcc3bd"></i>故障现象</span>
-        <span><i style="background:#f4e8d4;border:1px solid #e3d2b0"></i>工艺（按序）</span>
+        <span><i style="background:#f5e6e1;border:1px solid #dcc3bd"></i>故障实体</span>
+        <span><i style="background:#f4e8d4;border:1px solid #e3d2b0"></i>工序（按序）</span>
         <span><i style="background:#e5ebf0;border:1px solid #cdd8e2"></i>工具</span>
-        <span><i style="background:#e7eee9;border:1px solid #c8dbd2"></i>历史效果</span>
-        <span><i class="gbl"></i>全局工序</span>
-        <span><i class="mut"></i>非本故障（置灰）</span>
+        <span><i style="background:#e7eee9;border:1px solid #a9c6bb"></i><i style="background:#f4e8d4;border:1px solid #dcc292;margin-left:-2px"></i><i style="background:#f5e6e1;border:1px solid #d9b3a9;margin-left:-2px"></i>案例颜色 = 效果</span>
         <span><i class="dash"></i>命中路径</span>
+        <span><i class="mut"></i>不适用 / 已排除</span>
       </div>
     </div>
 
     <div class="dfig">
-      <div class="dfig-h"><b>相似度分项（加权贡献 w·p）</b><span id="sim-hint">当前选中历史作业</span></div>
-      <div id="bars"></div>
-      <div class="simsum" id="simsum"></div>
-      <div class="wtable-wrap" id="wtable"></div>
+      <div class="dfig-h"><b>井况示意 · 日报抽取结果落到井筒</b><span id="well-hint">—</span></div>
+      <div class="wwrap"><svg id="well" viewBox="0 0 600 170" role="img" aria-label="井筒示意图：套管、当前工具与落物位置"></svg></div>
+      <div class="dfig-foot"><span>井深按 0—3600 m 等比例示意；含水率不是液面，用右侧色条表示。</span></div>
     </div>
   </div>
 
   <div class="dcol">
-    <div class="dfig">
-      <div class="dfig-h"><b>候选方案 Top-3</b><span>按 故障 × 工艺 × 工具 分组</span></div>
-      <div id="plans"></div>
+    <div class="dfig dstage on" data-stage="0">
+      <div class="dfig-h"><b>01 · 日报与井况输入</b><span>先质控，再进模型</span></div>
+      <p class="dstage-lede">现场拿到的是一段日报。先看<b>能不能检索</b>：故障、井深与套管通径必须可定位；落物/断脱类还要说清形态与外径。不合格的文本退回补充。</p>
+      <div class="tlab"><span>修井日报 / 作业描述</span><span id="rpt-count">—</span></div>
+      <textarea id="rpt" class="rpt" spellcheck="false" aria-label="修井日报文本"></textarea>
+      <div class="exrow" id="examples"><span class="glbl">示例</span></div>
+      <div class="qrow"><span class="k">文本 / 实体</span><span class="v" id="q-text">—</span></div>
+      <div class="qrow"><span class="k">字段完整度</span><span class="v" id="q-fields">—</span></div>
+      <div class="qrow"><span class="k">物理一致性</span><span class="v" id="q-phys">—</span></div>
+      <div class="qrow"><span class="k">质控判定</span><span class="v" id="q-gate">—</span></div>
+      <div class="dfig-h" style="margin-top:7px"><b>结构化字段</b><span>文本抽取 / 人工覆盖</span></div>
+      <div class="fvals" id="fields"></div>
+      <div id="qc-rules" style="margin-top:4px"></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>同族历史作业</b><span id="cases-hint">按相似度</span></div>
-      <table class="dtable"><thead><tr><th>井次 / 工具</th><th>故障</th><th class="num">相似度</th><th class="num">工期(天)</th><th class="num">成功率</th></tr></thead><tbody id="cases"></tbody></table>
+
+    <div class="dfig dstage" data-stage="1">
+      <div class="dfig-h"><b>02 · NLP 实体抽取</b><span>词典 + 正则 · 每个命中都回到原文</span></div>
+      <p class="dstage-lede">抽取不做「端到端猜标签」：<b>术语词典</b>负责故障、工具、工序与同义词归一，<b>正则</b>负责井深、套管、含水、落物外径这些有固定写法的量。每个实体都带原文片段、规范值、命中方式和置信度；置信度低或未命中的字段交给人工补。</p>
+      <div class="hl" id="hl"></div>
+      <div class="hl-legend" id="hl-legend"></div>
+      <div class="dfig-h" style="margin-top:7px"><b>实体表</b><span id="ent-hint">—</span></div>
+      <div class="entlist" id="ents"></div>
+      <div class="dfig-foot"><span>词典命中按最长匹配、同义词归一；数字字段用正则。置信度为规则置信（精确 0.98 / 同义 0.92—0.96 / 正则 0.95—0.98），不是校准概率；未覆盖字符仍可由结构字段补齐。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="2">
+      <div class="dfig-h"><b>03 · 图谱检索与案例相似度</b><span>16 份案例报告 · 本页实时计算</span></div>
+      <p class="dstage-lede">故障族作为硬过滤；族内把 <b>7 维结构相似度</b>（分类相等给分、数值按距离给分、按故障分表加权）与 <b>TF-IDF 余弦</b>（词典词元 + 汉字二元组，16 份报告估计 IDF）合成。相似度不是拍一个数：点开每条案例能看到结构分项与共享词元的贡献。</p>
+      <div class="ctl-s" style="margin-bottom:5px"><label for="r-beta">文本权重 β</label><input type="range" id="r-beta" min="0" max="0.5" step="0.05" value="0.3" aria-label="文本相似度权重"><output id="o-beta">0.30</output><span class="ctl-hint">结构 1−β</span></div>
+      <table class="hits"><thead><tr><th style="width:74px"># 井次</th><th>工具 / 工艺</th><th class="num" style="width:32px">结构</th><th class="num" style="width:30px">文本</th><th class="num" style="width:34px">综合</th></tr></thead><tbody id="hits"></tbody></table>
       <div class="excluded" id="excluded-note"></div>
+      <div id="sim" style="margin-top:6px"></div>
+      <div class="dfig-foot"><span>结构相似度用现有分故障权重；文本相似度是真实 TF-IDF 余弦，不是编辑距离。故障同族项在族内恒为 1，只作基准分，不影响族内排序。</span></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>工具台账 · 当前故障族</b><span id="ledger-hint">外径 / 最小可通过内径 / 适用落物尺寸</span></div>
-      <div class="ledger-wrap" id="ledger"></div>
+
+    <div class="dfig dstage" data-stage="3">
+      <div class="dfig-h"><b>04 · 方案组装</b><span id="plan-hint">主方案 + 备选</span></div>
+      <p class="dstage-lede">组装不是把相似案例抄一遍：先按「故障 × 工艺 × 工具」分组，过工具台账的通径/落物尺寸硬约束，再按<b>综合相似度 × 历史成功率</b>排序。主方案要落到具体工序、工具组合与风险提醒；备选必须说清和主方案差在哪、什么条件下才选它。</p>
+      <div id="plan-main"></div>
+      <div class="dfig-h" style="margin-top:7px"><b>备选与差异</b><span>点击切换当前方案</span></div>
+      <div id="alts"></div>
+      <div class="dfig-h" style="margin-top:7px"><b>风险提醒</b><span>按井况与工具生成</span></div>
+      <div id="risks"></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="4">
+      <div class="dfig-h"><b>05 · 人工采纳与回写</b><span>价值口径 · 案例设定</span></div>
+      <p class="dstage-lede">系统只出<b>方案初稿</b>，签字的是工程师。采纳、修改或驳回都写回队列：采纳进案例库待审，修改进工具/工序模板修正，驳回进错题集。回写记录本轮<b>不参与检索</b>，避免用自己的答案证明自己。</p>
+      <div class="dfig-h" style="margin-bottom:3px"><b>现场口径 · 示范设定</b><span>非本页实测</span></div>
+      <div class="dval four" style="margin-bottom:6px">
+        <div><div class="k">年修井量</div><div class="v">1200 井次</div><div class="s">某采油厂口径</div></div>
+        <div><div class="k">方案编制</div><div class="v ok">3 h → 20 min</div><div class="s">初稿到可审</div></div>
+        <div><div class="k">历史案例复用率</div><div class="v ok">68%</div><div class="s">方案含历史证据</div></div>
+        <div><div class="k">同类事故重复率</div><div class="v ok">↓ 35%</div><div class="s">改造后年度对比</div></div>
+      </div>
+      <div class="dfig-h" style="margin-bottom:3px"><b>本页实测</b><span>随文本 / β 变化</span></div>
+      <div class="dval two" id="live-stats" style="margin-bottom:7px"></div>
+      <div class="dfeed" id="feedback">
+        <button class="dbtn" type="button" data-fb="adopt">✓ 采纳当前方案</button>
+        <select id="fb-mod" aria-label="修改类别">
+          <option value="工具组合">工具组合</option>
+          <option value="工序顺序">工序顺序</option>
+          <option value="工期与备料">工期与备料</option>
+        </select>
+        <button class="dbtn" type="button" data-fb="modify">✎ 修改后采纳</button>
+        <button class="dbtn" type="button" data-fb="reject">✗ 驳回</button>
+      </div>
+      <div class="dfeed-note" id="fb-note" style="margin-top:4px">—</div>
+      <div class="dfig-h" style="margin-top:7px"><b>回写队列</b><span>待审 · 不参与本轮检索</span></div>
+      <div class="wbq" id="wb"></div>
+      <div class="dfig-foot"><span>价值指标是案例设定的现场口径；页面只实测解析耗时、检索耗时与留一案例 Hit@3。回写要经过班组长确认才会进入下一轮案例库。</span></div>
+    </div>
+
+    <div class="dmodel">
+      <div class="dmodel-h"><b>模型档案</b><span class="db plain" id="m-badge">已加载</span></div>
+      <div class="dmodel-row"><span class="k">任务</span><span class="v">日报实体抽取 + 案例检索排序 + 方案初稿组装（CBR），不是端到端生成</span></div>
+      <div class="dmodel-row"><span class="k">知识库</span><span class="v" id="m-kb">—</span></div>
+      <div class="dmodel-row"><span class="k">抽取</span><span class="v" id="m-nlp">—</span></div>
+      <div class="dmodel-row"><span class="k">检索</span><span class="v" id="m-ret">—</span></div>
+      <div class="dmodel-row"><span class="k">验证</span><span class="v" id="m-val">—</span></div>
+      <div class="dmodel-row"><span class="k">边界</span><span class="v">复合故障、术语未归一、族内样本 < 3 时相似度不可靠，必须转人工</span></div>
+    </div>
+
+    <div class="dfig" style="padding-top:8px">
+      <div class="dfig-h"><b>过程日志</b><span>每一步都可追溯</span></div>
+      <div class="dtrace" id="trace"></div>
     </div>
   </div>
 </div>

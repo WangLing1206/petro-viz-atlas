@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>示范：抽油机井工况诊断（示功图分类）</title>
+<title>示范：抽油机井工况智能诊断（示功图 → 处置建议）</title>
 <link rel="stylesheet" href="demo.css">
 <style>
   .dyn{border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px}
@@ -15,72 +15,145 @@
   .pcoord-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10px;color:var(--ink-3);margin-top:6px}
   .pcoord-legend span{display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 4px;border-radius:3px}
   .pcoord-legend span:hover,.pcoord-legend span.on{background:var(--paper-2);color:var(--ink)}
-  #pcoord{display:block;width:100%;min-width:720px;height:auto}
+  #pcoord{display:block;width:100%;min-width:640px;height:auto}
+  .wrow{display:grid;grid-template-columns:86px minmax(0,1fr) 38px;gap:7px;align-items:center;font-size:10px;color:var(--ink-3);padding:3px 0}
+  .wrow .track{height:6px;border-radius:3px;background:var(--paper-3);position:relative;overflow:hidden}
+  .wrow .track i{position:absolute;top:0;bottom:0;border-radius:3px}
+  .wrow .val{font-family:var(--mono);font-size:9.5px;text-align:right;color:var(--ink-2)}
+  .qrow{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;padding:5px 0;border-bottom:1px dashed var(--line)}
+  .qrow:last-child{border-bottom:0}
+  .qrow .k{color:var(--ink-4);font-family:var(--mono);font-size:8.5px;letter-spacing:.04em}
+  .qrow .v{color:var(--ink-2);text-align:right}
 </style>
 </head>
 <body>
 
 <div class="dhead">
   <div>
-    <div class="dkick">DYNAMOMETER CARD · 形态分类</div>
-    <h1>示功图 → 工况诊断</h1>
-    <p class="lead">拖动「工况」看六种典型示功图形状。井况固定为泵径 56 mm、泵深 1200 m、冲程 3.0 m、冲次 6 min⁻¹；加噪声或结蜡干扰，看复合工况下置信度怎么掉。算法先归一化、再抽形态特征，与六个模板比对给出概率分布。</p>
+    <div class="dkick">DYNAMOMETER CARD · 采集 → 特征 → 分类 → 派单 → 回写</div>
+    <h1>示功图 → 工况诊断 → 处置建议</h1>
+    <p class="lead">这不是「看图形猜工况」。示范把一口抽油机井的示功图采集、归一化、7 维形态特征、softmax 分类器训练、置信度分级和人工复核串成一条可运行的流水线：每一步都能看到模型拿到了什么、算出了什么、为什么把这张图判成这个工况，以及什么时候它必须把判断交回人。</p>
   </div>
   <div class="dhead-r">
     <div class="dstat"><div class="k">判定</div><div class="v" id="st-verdict" style="font-size:12px">—</div></div>
-    <div class="dstat"><div class="k">置信度</div><div class="v" id="st-conf">—</div></div>
-    <div class="dstat"><div class="k">单冲程功</div><div class="v" id="st-area">—</div></div>
+    <div class="dstat good"><div class="k">置信度</div><div class="v" id="st-conf">—</div></div>
+    <div class="dstat"><div class="k">验证准确率</div><div class="v" id="st-acc">—</div></div>
+    <div class="dstat warn"><div class="k">复核比例</div><div class="v" id="st-review">—</div></div>
   </div>
 </div>
 
 <div class="dctl">
   <div class="grp"><span class="glbl">真实工况</span><div class="seg" id="seg-fault"></div></div>
-  <div class="ctl-s"><label>采集噪声</label><input type="range" id="r-noise" min="0" max="1" step="0.05" value="0.15"><output id="o-noise">0.15</output></div>
+  <div class="ctl-s"><label>采集噪声</label><input type="range" id="r-noise" min="0" max="0.6" step="0.05" value="0.15"><output id="o-noise">0.15</output></div>
   <label class="tog" id="tog-wax"><i></i>叠加结蜡干扰</label>
-  <button class="dbtn reset" id="btn-reset" type="button" style="margin-left:auto">重置参数</button>
+  <span class="sp"></span>
+  <button class="dbtn pri" id="btn-run" type="button">▶ 运行诊断</button>
+  <button class="dbtn" id="btn-reset" type="button">重置</button>
+</div>
+
+<div class="dflow" id="flow" role="tablist" aria-label="智能诊断流程">
+  <button type="button" class="on" data-s="0" role="tab" aria-selected="true"><span class="n"><i>01</i>INPUT</span><b>采集与质控</b><span>示功图 + 井况</span></button>
+  <button type="button" data-s="1" role="tab" aria-selected="false"><span class="n"><i>02</i>FEATURE</span><b>归一化与特征</b><span>7 维形态特征</span></button>
+  <button type="button" data-s="2" role="tab" aria-selected="false"><span class="n"><i>03</i>MODEL</span><b>分类器训练</b><span>softmax 回归</span></button>
+  <button type="button" data-s="3" role="tab" aria-selected="false"><span class="n"><i>04</i>DECISION</span><b>置信度与派单</b><span>自动 / 复核</span></button>
+  <button type="button" data-s="4" role="tab" aria-selected="false"><span class="n"><i>05</i>LOOP</span><b>人工确认回写</b><span>价值与闭环</span></button>
 </div>
 
 <div class="dgrid c2">
   <div class="dcol">
     <div class="dfig">
-      <div class="dfig-h"><b>示功图（光杆载荷 — 位移）</b><span id="dyn-hint">—</span></div>
+      <div class="dfig-h"><b>现场输入 · 示功图（光杆载荷 — 位移）</b><span id="dyn-hint">—</span></div>
       <div class="dyn"><svg id="dyn" viewBox="0 0 420 340" role="img" aria-label="示功图"></svg></div>
       <div class="dfig-foot">
         <span><i style="background:#1d4e50;height:4px"></i>实测示功图</span>
-        <span><i class="dash"></i>该工况模板</span>
+        <span><i class="dash"></i>模型判定的工况模板</span>
         <span><i style="background:#a9742c;height:4px"></i>上下冲程平均载荷</span>
       </div>
     </div>
+
     <div class="dfig">
-      <div class="dfig-h"><b>形态特征</b><span>归一化后计算</span></div>
-      <div id="feats"></div>
+      <div class="dfig-h"><b>模型看到的特征空间 · 七维平行坐标</b><span>悬停概率行点亮模板 · 粗线 = 当前样本</span></div>
+      <div class="pcoord-wrap"><svg id="pcoord" viewBox="0 0 900 260" role="img" aria-label="七维特征平行坐标"></svg></div>
+      <div id="pcoord-legend" class="pcoord-legend"></div>
+      <div class="dfig-foot">
+        <span>细线 = 6 类模板</span>
+        <span>每个轴按模板与当前样本的极值归一化</span>
+        <span>特征越分开，分类越可靠</span>
+      </div>
     </div>
   </div>
 
   <div class="dcol">
-    <div class="dfig">
-      <div class="dfig-h"><b>各工况概率</b><span>模板相似度 + softmax</span></div>
-      <div id="probs"></div>
+    <div class="dfig dstage on" data-stage="0">
+      <div class="dfig-h"><b>01 · 采集与质量控制</b><span>模型还没开始看图</span></div>
+      <p class="dstage-lede">现场先确认这张图<b>能不能用</b>：冲程、冲次、载荷量程是否完整，噪声是否淹没了阀漏造成的斜率变化。采集质量不合格的图不进模型，直接退回重采。</p>
+      <div class="qrow"><span class="k">采样</span><span class="v">1 幅 / 冲次 · 上、下冲程各 90 点</span></div>
+      <div class="qrow"><span class="k">井况</span><span class="v">泵径 56 mm · 泵深 1200 m · 冲程 3.0 m · 冲次 6 min⁻¹</span></div>
+      <div class="qrow"><span class="k">载荷量程</span><span class="v">0—110 kN · 当前峰值 <b id="q-peak">—</b></span></div>
+      <div class="qrow"><span class="k">信噪比</span><span class="v" id="q-snr">—</span></div>
+      <div class="qrow"><span class="k">输入判定</span><span class="v" id="q-gate">—</span></div>
+      <div class="dfig-foot" style="margin-top:7px"><span>现场只给一张图；不同泵径/泵深不能直接比，必须先归一化。</span></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>判定与建议</b><span>按置信度分级</span></div>
-      <div id="advice"></div>
-    </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>历史评测：混淆矩阵</b><span>1.1 万幅强标签</span></div>
-      <div class="conf" id="cm"></div>
-    </div>
-  </div>
-</div>
 
-<div class="dfig" style="margin-top:12px">
-  <div class="dfig-h"><b>七维特征平行坐标 · 6 类模板 vs 当前样本</b><span>悬停概率行点亮模板 · 一条折线 = 一个工况</span></div>
-  <div class="pcoord-wrap"><svg id="pcoord" viewBox="0 0 900 260" role="img" aria-label="七维特征平行坐标"></svg></div>
-  <div id="pcoord-legend" class="pcoord-legend"></div>
-  <div class="dfig-foot">
-    <span><i style="background:#123b3a;height:4px"></i>当前样本</span>
-    <span>细线 = 6 类模板</span>
-    <span>每个轴按模板与当前样本的极值归一化</span>
+    <div class="dfig dstage" data-stage="1">
+      <div class="dfig-h"><b>02 · 归一化与 7 维形态特征</b><span>把图形变成可比较的数</span></div>
+      <p class="dstage-lede">位移归一到 0—1、载荷按固定 100 kN 归一，再抽 7 个有物理含义的量：<b>环面积</b>看作单冲程做功，<b>上下均载</b>看载荷水平，<b>两侧斜率</b>看阀漏方向，<b>载荷波动</b>看气液混相。模型只吃这 7 个数。</p>
+      <div id="feats"></div>
+      <div class="dfig-foot" style="margin-top:7px"><span>选这 7 维不是为了「多」，而是每一维都能在现场找到对应物理解释。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="2">
+      <div class="dfig-h"><b>03 · 分类器训练与验证</b><span>本页现场训练 · 合成样本</span></div>
+      <p class="dstage-lede">用 6 类、每类 120 幅合成示功图训练一个 <b>softmax 回归</b>（7 维特征 + 7 个平方项，共 14 维），留出 20% 做验证。看训练损失是否收敛、哪两类最容易混、模型把权重压在了哪些特征上。</p>
+      <div class="dval" style="margin-bottom:8px">
+        <div><div class="k">训练 / 验证</div><div class="v" id="m-n">—</div><div class="s">6 类均衡 · 现场生成</div></div>
+        <div><div class="k">验证准确率</div><div class="v ok" id="m-acc">—</div><div class="s">留出 20% 不参与训练</div></div>
+      </div>
+      <div class="dfig-h" style="margin-top:2px"><b>训练损失</b><span>交叉熵 · 每 10 轮</span></div>
+      <svg class="dcurve" id="curve" viewBox="0 0 320 96" role="img" aria-label="训练损失曲线"></svg>
+      <div class="dfig-h" style="margin-top:8px"><b>验证集混淆矩阵</b><span>行 = 真实 · 列 = 预测</span></div>
+      <div class="conf" id="cm"></div>
+      <div class="dfig-h" style="margin-top:9px"><b>当前判定的特征贡献</b><span>权重 × 标准化特征</span></div>
+      <div id="weights"></div>
+      <div class="dfig-foot" style="margin-top:6px"><span>本示范用合成样本现场训练；真实项目用 1.1 万幅人工标签，指标口径另算。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="3">
+      <div class="dfig-h"><b>04 · 概率、置信度与派单</b><span>模型输出如何变成动作</span></div>
+      <p class="dstage-lede">分类器给 6 个工况各一个概率。规则不是「取最大值就完事」：<b>p ≥ 0.75</b> 自动派单；<b>0.50—0.75</b> 进人工复核；<b>&lt; 0.50</b> 或叠加结蜡时转专家。置信度越低，越不能让它单独做决定。</p>
+      <div id="probs"></div>
+      <div id="advice" style="margin-top:9px"></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="4">
+      <div class="dfig-h"><b>05 · 价值与闭环</b><span>省下来的不是「画图时间」</span></div>
+      <p class="dstage-lede">AI 的价值不在替代工程师，而在把<b>全检</b>变成可能：3800 口井每天都能过一遍，只把低置信度和复合工况送人工。人工确认的结果回写样本库，下一轮重训时进入训练集。</p>
+      <div class="dval" style="margin-bottom:8px">
+        <div><div class="k">单井判读</div><div class="v">6 min → 0.08 s</div><div class="s">人工翻图 vs 模型推理</div></div>
+        <div><div class="k">3800 口全检</div><div class="v">380 h → 68 h</div><div class="s">含 18% 人工复核</div></div>
+        <div><div class="k">异常召回</div><div class="v ok">72% → 94%</div><div class="s">抽检基线 vs 模型全检</div></div>
+        <div><div class="k">无效检泵</div><div class="v ok">−37 井次/年</div><div class="s">示范口径 · 按区块统计</div></div>
+      </div>
+      <div class="dfeed" id="feedback">
+        <button class="dbtn" type="button" data-fb="ok">✓ 诊断正确</button>
+        <button class="dbtn" type="button" data-fb="bad">✗ 标为误判</button>
+        <span class="dfeed-note" id="fb-note">回写 0 条 · 人工确认后才进入下一轮训练</span>
+      </div>
+    </div>
+
+    <div class="dmodel">
+      <div class="dmodel-h"><b>模型档案</b><span class="db plain" id="m-badge">已训练</span></div>
+      <div class="dmodel-row"><span class="k">任务</span><span class="v">6 类工况单标签分类 + 低置信度拒识</span></div>
+      <div class="dmodel-row"><span class="k">数据</span><span class="v">720 幅合成示功图（每类 120）· 真实项目 1.1 万幅人工标签</span></div>
+      <div class="dmodel-row"><span class="k">模型</span><span class="v">softmax 回归 · 14 维（7 特征 + 7 平方项）</span></div>
+      <div class="dmodel-row"><span class="k">验证</span><span class="v" id="m-summary">—</span></div>
+      <div class="dmodel-row"><span class="k">边界</span><span class="v">复合工况 / 结蜡干扰不强行分类，交人工复核</span></div>
+    </div>
+
+    <div class="dfig" style="padding-top:8px">
+      <div class="dfig-h"><b>过程日志</b><span>每一步都可追溯</span></div>
+      <div class="dtrace" id="trace"></div>
+    </div>
   </div>
 </div>
 

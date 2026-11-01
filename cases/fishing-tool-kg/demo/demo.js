@@ -1,20 +1,23 @@
 /* =========================================================
-   落物打捞工具智能选型 · 可运行示范
+   落物打捞工具智能选型 · AI 作业流示范（v2）
    ---------------------------------------------------------
-   ① 落物描述结构化（形态 / 外径 / 内径 / 长度 / 井斜 / 落底三态 / 材质 / 卡阻）
-   ② 工具知识表：外径、内孔、可捞外径或内径区间、最小咬合长度、
-      最大井斜、是否需循环、是否需落底、历史成功率、作业动作
-   ③ 两级筛选：硬约束真排除（不进入推荐）→ 加权软评分排序
-   ④ 井筒剖面 + 工具构造示意 + 解卡/磨铣工序（不参与打捞评分）
-
-   物理一致性约定：
-   - 外部套入式工具必须满足：可捞上限 dmax < 工具内孔 < 工具外径
-   - 公锥 / 捞矛按落物内径判断；母锥 / 卡瓦筒按落物外径判断
-   - 所有通过性按套管内通径校核，单边间隙 ≥ 6 mm
+   这条流水线回答的不是「哪种工具分数最高」，而是：
+     一段现场描述 → 能不能用 → 哪些工具物理可行 → 可行候选谁更可能成功
+     → 这一趟带什么、备什么、先做什么 → 现场结果怎样回到模型
+   ① 落物描述结构化：文本 → 10 个字段 + 质控；
+   ② 工具知识图谱与硬约束：8 道门真排除，排除项不进入模型；
+   ③ 学习排序：640 例合成历史记录（512 训练 / 128 验证），
+      6 维特征逻辑回归 + 标准化 + 标签平滑 + 温度缩放；
+   ④ 方案组装：主工具 + 备选 + 解卡/磨铣工序 + 风险；
+   ⑤ 反馈与价值：选用成功/失败回写，成功率平滑更新，追加样本重训。
+   合成数据与现场口径在页面上分开标注，不混用。
    ========================================================= */
 (function () {
   'use strict';
 
+  /* =========================================================
+     1. 领域知识
+     ========================================================= */
   var FORMS = [
     { key: 'tubular', name: '管状体', desc: '油管 / 钻杆本体', bore: true,  od: 73,  fid: 62, len: 2.4 },
     { key: 'rod',     name: '杆状体', desc: '抽油杆 / 加重杆', bore: false, od: 22,  fid: 0,  len: 2.0 },
@@ -32,15 +35,7 @@
 
   var CLEARANCE = 6;   /* 工具外径与套管内通径之间必须预留的单边间隙，mm */
 
-  /* ------------------------------------------------------------------
-     工具知识表（11 件打捞工具）
-     od      工具外径
-     bore    工具内孔（外部套入式工具必须 dmax < bore < od）
-     basis   'od' = 按落物外径判断；'id' = 按落物内径判断
-     dmin/dmax 可打捞落物外径（或内径）区间
-     minLen  最小咬合长度，m；maxLen 工具可容纳的最大落物长度，m
-     needBottom 是否必须落底；circ 是否必须循环洗井
-     ------------------------------------------------------------------ */
+  /* 工具知识表（11 件打捞工具）。basis='od' 按落物外径判断，'id' 按落物内径判断 */
   var TOOLS = [
     { key: 'kawa', name: '卡瓦打捞筒', od: 108, bore: 86, basis: 'od', dmin: 50, dmax: 80,
       sizeLabel: '可捞外径', minLen: 0.3, maxLen: 12, maxIncl: 60, circ: 0, needBottom: 0, succ: 0.88,
@@ -116,20 +111,48 @@
       note: '套住落物与套管环空，循环洗出砂桥或水泥环；套铣到位后再下打捞工具。' },
     { key: 'mill', name: '平底磨鞋', od: 105, circ: 1, when: '鱼顶不规则 / 大件无法直接捞 / 落物被埋',
       note: '加压磨铣鱼顶或大件，磨屑随循环带出；磨铣后必须清屑。' },
-    { key: 'basket', name: '篮式捞筒 / 反循环', od: 108, circ: 1, when: '磨铣后清屑',
+    { key: 'basketp', name: '篮式捞筒 / 反循环', od: 108, circ: 1, when: '磨铣后清屑',
       note: '清除磨铣产生的铁屑，避免二次落物；也可用反循环打捞篮。' }
   ];
 
-  var W = { form: 0.32, size: 0.26, incl: 0.16, succ: 0.16, cond: 0.10 };
+  var FEATS = [
+    { key: 'size', label: '尺寸匹配', hint: '落物外径/内径落在工具可捞区间中的位置' },
+    { key: 'reach', label: '可达性', hint: '井斜余量、落底未知与卡阻对工具到达鱼顶的影响' },
+    { key: 'mat', label: '材质匹配', hint: '磁力工具对铁磁性落物有优势，机械工具对材质不敏感' },
+    { key: 'len', label: '咬合长度', hint: '落物长度相对最小咬合长度与最大容纳长度' },
+    { key: 'succ', label: '历史成功率', hint: '工具知识表 / 在线回写得到的成功率' },
+    { key: 'comp', label: '工序复杂度', hint: '是否需循环、落底、震击与造扣；越简单越高' }
+  ];
+
+  var PRIOR_N = 12;
+  var SUCC = {};
+  TOOLS.forEach(function (t) { SUCC[t.key] = t.succ; });
 
   var DEFAULTS = {
     form: 'tubular', casing: 0, od: 73, fishId: 62, len: 2.4, incl: 18,
     bottom: null, circ: true, material: 'ferro', stuck: 'none'
   };
 
-  var state = clone(DEFAULTS);
+  function freshSrc() {
+    return { form: false, casing: false, od: false, fishId: false, len: false, incl: false, bottom: false, material: false, stuck: false, circ: false };
+  }
 
-  /* ---------- 小工具 ---------- */
+  var state = clone(DEFAULTS);
+  state.src = freshSrc();
+  state.focus = null;
+  state.stage = 0;
+
+  var FB = { ok: 0, bad: 0, byTool: {} };
+  var ONLINE_ROWS = [];
+  var TRACE = [];
+  var RUN_TIMERS = [];
+  var RENDER_TIMER = null;
+  var MODEL = null;
+  var LAST = null;
+
+  /* =========================================================
+     2. 小工具
+     ========================================================= */
   function clone(o) {
     var r = {}, k;
     for (k in o) { if (Object.prototype.hasOwnProperty.call(o, k)) r[k] = o[k]; }
@@ -138,11 +161,19 @@
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function fmt1(v) { return (Math.round(v * 10) / 10).toFixed(1); }
   function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c];
+    });
+  }
   function curCasing() { return CASINGS[state.casing]; }
   function FORM_OF(k) {
     var i;
     for (i = 0; i < FORMS.length; i++) if (FORMS[i].key === k) return FORMS[i];
     return FORMS[0];
+  }
+  function stuckName(k) {
+    return k === 'none' ? '未卡阻' : (k === 'sand' ? '砂卡' : (k === 'cement' ? '水泥卡' : '被埋'));
   }
   function formNames(t) {
     if (t.basis === 'id') return '管状体（需内孔）';
@@ -151,8 +182,24 @@
     return a.length ? a.join('、') : '—';
   }
   function fishValue(t, s) { return t.basis === 'id' ? s.fishId : s.od; }
+  function succNow(t) { return SUCC[t.key]; }
 
-  /* ---------- 尺寸评分：落在区间中段得满分，贴近边界缓降 ---------- */
+  /* ---------- 可复现随机数 ---------- */
+  var RND = { a: 20261031 };
+  function seedRnd(a) {
+    a = Math.floor(a) % 2147483647;
+    if (a <= 0) a += 2147483646;
+    RND.a = a;
+  }
+  function rnd() { RND.a = (RND.a * 16807) % 2147483647; return RND.a / 2147483647; }
+  function gauss() {
+    var u = 1 - rnd(), v = 1 - rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  /* =========================================================
+     3. 特征与硬约束
+     ========================================================= */
   function sizeScore(t, s) {
     var v = fishValue(t, s);
     if (t.sweet && v >= t.sweet[0] && v <= t.sweet[1]) return 1;
@@ -163,129 +210,550 @@
     return 0.65 + 0.35 * Math.min(1, edge / 0.3);
   }
 
-  /* ---------- 硬约束 + 软评分 ---------- */
+  function inclScoreOf(t, s) {
+    var v = 1;
+    if (s.incl > t.maxIncl - 10) v = 1 - (s.incl - (t.maxIncl - 10)) / 10 * 0.35;
+    return clamp(v, 0.65, 1);
+  }
+
+  function lenScoreOf(t, s) {
+    var span = Math.max(0.25, t.minLen);
+    var margin = (s.len - t.minLen) / span;
+    var v = 0.55 + 0.45 * clamp(margin, 0, 1);
+    if (t.maxLen < 12 && s.len > 0.7 * t.maxLen) {
+      v -= 0.15 * clamp((s.len - 0.7 * t.maxLen) / (0.3 * t.maxLen), 0, 1);
+    }
+    return clamp(v, 0.2, 1);
+  }
+
+  function matScoreOf(t, s) {
+    /* 机械工具对材质中性；磁力工具只有在铁磁性落物上才拿满分 */
+    if (t.material === 'ferro') return s.material === 'ferro' ? 1 : 0.2;
+    return 0.82;
+  }
+
+  function reachScoreOf(t, s) {
+    var head = clamp(1 - s.incl / Math.max(1, t.maxIncl), 0, 1);
+    var v = 0.45 + 0.55 * head;
+    if (s.bottom === null) v *= t.needBottom ? 0.55 : 0.90;
+    if (s.stuck !== 'none') v *= 0.92;
+    return clamp(v, 0.1, 1);
+  }
+
+  function compScoreOf(t, s) {
+    var c = 1;
+    if (t.circ) c -= 0.28;
+    if (t.needBottom) c -= 0.22;
+    if (s.stuck === 'sand' || s.stuck === 'cement') c -= 0.25;
+    if (s.bottom === null) c -= 0.12;
+    if (t.basis === 'id') c -= 0.08;
+    return clamp(c, 0.1, 1);
+  }
+
+  function featureVec(t, s) {
+    return [sizeScore(t, s), reachScoreOf(t, s), matScoreOf(t, s), lenScoreOf(t, s), succNow(t), compScoreOf(t, s)];
+  }
+
+  /* 返回 {out, gates, reasons, warns, x}
+     gates 按固定顺序记录每一道门的判定，供 02 阶段做漏斗 */
   function evaluate(t, s) {
-    var reasons = [];
-    var warns = [];
+    var gates = [];
+    function gate(key, label, ok, detail) {
+      gates.push({ key: key, label: label, ok: ok, detail: detail });
+    }
     var limit = s.drift - 2 * CLEARANCE;
 
-    if (t.od > limit) {
-      reasons.push('工具外径 ' + t.od + ' mm > 通径 ' + fmt1(s.drift) + ' − 2×6 = ' + fmt1(limit) + ' mm');
-    }
-    if (s.stuck === 'buried') {
-      reasons.push('落物被埋，鱼顶不可达，需先套铣 / 磨铣清障');
-    }
+    gate('reach', '鱼顶可达', s.stuck !== 'buried',
+      s.stuck === 'buried' ? '落物被埋，鱼顶不可达' : '鱼顶可达（' + stuckName(s.stuck) + '）');
+
+    gate('drift', '通径 / 单边间隙', t.od <= limit,
+      '工具外径 ' + t.od + ' mm ' + (t.od <= limit ? '≤' : '>') + ' 通径 ' + fmt1(s.drift) + ' − 2×6 = ' + fmt1(limit) + ' mm');
 
     if (t.basis === 'id') {
-      if (!s.fishBore) {
-        reasons.push('落物无内孔，' + t.name + '无法插入造扣');
-      } else if (!s.fishId) {
-        reasons.push('未给出落物内径，无法校核' + t.name);
-      } else if (s.fishId < t.dmin || s.fishId > t.dmax) {
-        reasons.push('落物内径 ' + s.fishId + ' mm 超出' + t.sizeLabel + ' ' + t.dmin + '—' + t.dmax + ' mm');
-      }
+      var idOk = !!s.fishBore && s.fishId > 0 && s.fishId >= t.dmin && s.fishId <= t.dmax;
+      gate('size', '可捞区间', idOk,
+        !s.fishBore ? '落物无内孔，' + t.name + '无法插入造扣'
+          : (!s.fishId ? '未给出落物内径，无法校核' + t.name
+            : '落物内径 ' + s.fishId + ' mm ' + (idOk ? '在' : '超出') + t.sizeLabel + ' ' + t.dmin + '—' + t.dmax + ' mm'));
     } else {
-      if (s.od < t.dmin || s.od > t.dmax) {
-        reasons.push('落物外径 ' + s.od + ' mm 超出' + t.sizeLabel + ' ' + t.dmin + '—' + t.dmax + ' mm');
-      }
+      var odOk = s.od >= t.dmin && s.od <= t.dmax;
+      gate('size', '可捞区间', odOk,
+        '落物外径 ' + s.od + ' mm ' + (odOk ? '在' : '超出') + t.sizeLabel + ' ' + t.dmin + '—' + t.dmax + ' mm');
     }
 
-    if (t.material === 'ferro' && s.material !== 'ferro') {
-      reasons.push('落物为非铁磁性，磁力打捞器无效');
-    }
-    if (s.incl > t.maxIncl) {
-      reasons.push('井斜 ' + s.incl + '° > 工具允许 ' + t.maxIncl + '°');
-    }
-    if (t.circ && !s.circ) {
-      reasons.push('工具需循环洗井，本井不可循环');
-    }
-    if (t.needBottom && s.bottom === false) {
-      reasons.push('工具需落底，落物悬空');
-    }
-    if (s.len < t.minLen) {
-      reasons.push('落物长度 ' + fmt1(s.len) + ' m < 最小咬合长度 ' + fmt1(t.minLen) + ' m');
-    }
-    if (s.len > t.maxLen) {
-      reasons.push('落物长度 ' + fmt1(s.len) + ' m > 工具可容纳 ' + fmt1(t.maxLen) + ' m');
-    }
+    var matOk = !(t.material === 'ferro' && s.material !== 'ferro');
+    gate('material', '材质', matOk,
+      t.material === 'ferro' ? '磁力工具需铁磁性，落物为' + (s.material === 'ferro' ? '铁磁性' : '非铁磁性') : '机械工具，材质不敏感');
 
-    if (reasons.length) return { out: true, reasons: reasons, why: reasons.join('；') };
+    var inclOk = s.incl <= t.maxIncl;
+    gate('incl', '井斜', inclOk,
+      '井斜 ' + s.incl + '° ' + (inclOk ? '≤' : '>') + ' 工具允许 ' + t.maxIncl + '°');
 
-    if (t.needBottom && s.bottom === null) {
-      warns.push('需落底：状态未知（落底分支可用，悬空分支不可用）');
-    }
+    var circOk = !t.circ || s.circ;
+    gate('circ', '循环', circOk,
+      t.circ ? '工具需循环，本井' + (s.circ ? '可循环' : '不可循环') : '不需要循环');
+
+    var botOk = !(t.needBottom && s.bottom === false);
+    gate('bottom', '落底', botOk,
+      t.needBottom ? ('工具需落底，落物' + (s.bottom === true ? '已落底' : (s.bottom === false ? '悬空' : '落底未知'))) : '不要求落底');
+
+    var lenOk = s.len >= t.minLen && s.len <= t.maxLen;
+    gate('length', '咬合长度', lenOk,
+      '落物 ' + fmt1(s.len) + ' m，工具要求 ≥' + fmt1(t.minLen) + ' / ≤' + fmt1(t.maxLen) + ' m');
+
+    var out = gates.some(function (g) { return !g.ok; });
+    var reasons = gates.filter(function (g) { return !g.ok; }).map(function (g) { return g.detail; });
+
+    if (out) return { out: true, gates: gates, reasons: reasons, why: reasons.join('；'), warns: [] };
+
+    var warns = [];
+    if (t.needBottom && s.bottom === null) warns.push('需落底：状态未知（落底分支可用，悬空分支不可用）');
     if (s.stuck === 'sand') warns.push('砂卡：工具串建议加震击器 + 安全接头');
     if (s.stuck === 'cement') warns.push('水泥卡：工具串建议加震击器 + 安全接头');
+    if (t.od > limit - 2) warns.push('工具外径余量仅 ' + fmt1(limit - t.od) + ' mm');
+    if (s.incl > t.maxIncl - 10) warns.push('井斜接近工具上限 ' + t.maxIncl + '°');
 
-    var formScore = t.form[s.form] || 0;
-    var size = sizeScore(t, s);
-
-    var inclScore = 1;
-    if (s.incl > t.maxIncl - 10) {
-      inclScore = 1 - (s.incl - (t.maxIncl - 10)) / 10 * 0.35;
-    }
-    inclScore = Math.max(0.65, Math.min(1, inclScore));
-
-    var condScore = 1;
-    if (t.needBottom && s.bottom === null) condScore -= 0.30;
-    if (s.stuck === 'sand' || s.stuck === 'cement') condScore -= 0.06;
-    condScore = Math.max(0, condScore);
-
-    var parts = [
-      { k: '形态匹配', p: formScore, w: W.form },
-      { k: '尺寸隶属', p: size, w: W.size },
-      { k: '井斜适应', p: inclScore, w: W.incl },
-      { k: '历史成功率', p: t.succ, w: W.succ },
-      { k: '工况条件', p: condScore, w: W.cond }
-    ];
-    var score = parts.reduce(function (a, x) { return a + x.w * x.p; }, 0);
-    return { out: false, score: score, parts: parts, warns: warns };
+    return { out: false, gates: gates, reasons: [], why: '', warns: warns, x: featureVec(t, s) };
   }
 
-  function rank(s) {
-    return TOOLS.map(function (t) {
-      var e = evaluate(t, s);
-      return { t: t, e: e, score: e.out ? -1 : e.score };
-    }).sort(function (a, b) { return b.score - a.score; });
-  }
-  function bestOf(rows) {
-    var i;
-    for (i = 0; i < rows.length; i++) if (!rows[i].e.out) return rows[i];
-    return null;
-  }
-
-  /* ---------- 起下钻：只给整数 / 区间 ---------- */
-  function tripText(best) {
-    if (!best) return '—';
-    if (best.score >= 0.80) return '1 趟（预计）';
-    if (best.score >= 0.62) return '1—2 趟';
-    return '2—3 趟';
-  }
-
-  function sizeMeta(t) {
-    var head = '外径 ' + t.od + ' mm · ';
-    if (t.bore) head += '内孔 ' + t.bore + ' mm · ';
-    else if (t.basis === 'id') head += '无内孔工具（插入落物内孔）· ';
-    else head += '无内孔 · ';
-    return head + t.sizeLabel + ' ' + t.dmin + '—' + t.dmax + ' mm · 咬合 ≥' + t.minLen + ' m';
-  }
-
-  function toolTitle(t) {
-    return t.name + '｜' + sizeMeta(t) +
-      '｜需落底 ' + (t.needBottom ? '是' : '否') +
-      '｜需循环 ' + (t.circ ? '是' : '否') +
-      '｜最大井斜 ' + t.maxIncl + '°' +
-      '｜历史成功率 ' + Math.round(t.succ * 100) + '%' +
-      '｜' + t.note;
+  /* 旧规则基线：形态 0.45 + 尺寸 0.35 + 历史成功率 0.20（只用于验证集对比） */
+  function baseScore(t, s) {
+    return 0.45 * (t.form[s.form] || 0) + 0.35 * sizeScore(t, s) + 0.20 * succNow(t);
   }
 
   /* =========================================================
-     工具构造示意（分工具画，标签不裁切）
+     4. 合成 640 例历史记录（透明标注）
+     ========================================================= */
+  var TOOL_BIAS = {
+    kawa: 0.05, small: 0.02, box: -0.03, pin: -0.05, spear: 0.03,
+    sucker: 0.04, basket: -0.02, magnet: 0.06, yiba: -0.04, rope: 0.01, thin: -0.06
+  };
+
+  function trueProb(t, x) {
+    var eta = 1.28
+      + 3.00 * (x[0] - 0.86)
+      + 2.60 * (x[1] - 0.80)
+      + 1.20 * (x[2] - 0.84)
+      + 5.00 * (x[3] - 0.86)
+      + 3.40 * (x[4] - 0.81)
+      + 3.20 * (x[5] - 0.78)
+      + (TOOL_BIAS[t.key] || 0) * 0.3
+      + gauss() * 0.10;
+    return 1 / (1 + Math.exp(-eta));
+  }
+
+  function pickForm() {
+    var r = rnd();
+    if (r < 0.40) return 'tubular';
+    if (r < 0.60) return 'rod';
+    if (r < 0.75) return 'cable';
+    if (r < 0.90) return 'solid';
+    return 'toolbig';
+  }
+
+  function pickCasing() {
+    var r = rnd();
+    return r < 0.45 ? 0 : (r < 0.80 ? 1 : 2);
+  }
+
+  function genCase() {
+    var attempt, tt, fitCasings, casingIdx, c, forms, form, f, lo, hi, od, fishId, len, lmin, lmax;
+    var incl, br, bottom, material, sr, stuck, circ, s, eT, cands;
+
+    for (attempt = 0; attempt < 160; attempt++) {
+      /* 先抽一件「这条历史记录里用过的工具」，再围绕它的适用条件造落物。
+         这样每条记录至少有一个真正匹配的候选，避免大量「怎么选都差」的伪样本。 */
+      tt = TOOLS[Math.floor(rnd() * TOOLS.length)];
+
+      fitCasings = [];
+      CASINGS.forEach(function (cc, i) { if (tt.od <= cc.drift - 2 * CLEARANCE) fitCasings.push(i); });
+      if (!fitCasings.length) continue;
+      casingIdx = fitCasings[Math.floor(rnd() * fitCasings.length)];
+      c = CASINGS[casingIdx];
+
+      forms = FORMS.filter(function (ff) { return (tt.form[ff.key] || 0) >= 0.5; });
+      if (!forms.length) continue;
+      form = forms[Math.floor(rnd() * forms.length)].key;
+      f = FORM_OF(form);
+
+      if (tt.basis === 'od') {
+        lo = tt.dmin; hi = tt.dmax;
+        if (form === 'tubular') { lo = Math.max(lo, 50); hi = Math.min(hi, 84); }
+        if (form === 'rod') { lo = Math.max(lo, 16); hi = Math.min(hi, 30); }
+        if (form === 'cable') { lo = Math.max(lo, 1); hi = Math.min(hi, 10); }
+        if (form === 'solid') { lo = Math.max(lo, 2); hi = Math.min(hi, 30); }
+        if (form === 'toolbig') { lo = Math.max(lo, 80); hi = Math.min(hi, 120); }
+        if (lo > hi) continue;
+        od = lo + (hi - lo) * (0.30 + rnd() * 0.40);
+      } else {
+        od = 60 + rnd() * 35;
+      }
+      od = Math.round(clamp(od, 1, c.drift - 1));
+
+      fishId = 0;
+      if (f.bore) {
+        if (tt.basis === 'id') fishId = Math.round(tt.dmin + (tt.dmax - tt.dmin) * (0.25 + rnd() * 0.50));
+        else fishId = Math.round(od * (0.76 + rnd() * 0.12));
+        fishId = clamp(fishId, 1, Math.max(1, od - 6));
+      }
+
+      lmin = tt.minLen * 2.0;
+      lmax = tt.maxLen * 0.92;
+      if (lmax < lmin) { lmin = tt.minLen * 1.05; lmax = tt.maxLen; }
+      len = lmin + rnd() * (lmax - lmin);
+      if (form === 'tubular') len = clamp(len, 0.6, 8);
+      else if (form === 'rod') len = clamp(len, 0.5, 7);
+      else if (form === 'cable') len = clamp(len, 1, 10);
+      else if (form === 'solid') len = clamp(len, 0.1, 0.7);
+      else len = clamp(len, 0.4, 4);
+      len = Math.round(len * 10) / 10;
+
+      incl = Math.round(tt.maxIncl * (0.10 + rnd() * 0.80));
+      br = rnd();
+      bottom = tt.needBottom ? true : (br < 0.68 ? true : (br < 0.92 ? false : null));
+      material = tt.material === 'ferro' ? 'ferro' : (rnd() < 0.85 ? 'ferro' : 'non');
+      circ = tt.circ ? true : rnd() < 0.86;
+      sr = rnd();
+      stuck = sr < 0.70 ? 'none' : (sr < 0.85 ? 'sand' : (sr < 0.95 ? 'cement' : 'none'));
+
+      s = {
+        form: form, casing: casingIdx, drift: c.drift, od: od, fishBore: f.bore, fishId: fishId,
+        len: len, incl: incl, bottom: bottom, circ: circ, material: material, stuck: stuck
+      };
+      eT = evaluate(tt, s);
+      if (eT.out) continue;
+
+      cands = [];
+      TOOLS.forEach(function (t) {
+        var e = evaluate(t, s);
+        if (e.out) return;
+        var pT = trueProb(t, e.x);
+        var y = rnd() < pT ? 1 : 0;
+        cands.push({ toolKey: t.key, x: e.x, pTrue: pT, y: y, base: baseScore(t, s) });
+      });
+      if (cands.length >= 1) return { s: s, cands: cands };
+    }
+    return null;
+  }
+
+  function buildDataset() {
+    seedRnd(20261031);
+    var cases = [], c;
+    while (cases.length < 640) {
+      c = genCase();
+      if (c) { c.id = cases.length; cases.push(c); }
+    }
+    /* 固定种子洗牌，保证每次打开页面的训练/验证划分一致 */
+    for (var i = cases.length - 1; i > 0; i--) {
+      var j = Math.floor(rnd() * (i + 1));
+      var tmp = cases[i]; cases[i] = cases[j]; cases[j] = tmp;
+    }
+    var train = cases.slice(0, 512), val = cases.slice(512);
+    var rows = [];
+    train.forEach(function (cc) {
+      cc.cands.forEach(function (cand) {
+        rows.push({ x: cand.x, y: cand.y, pTrue: cand.pTrue, base: cand.base, caseId: cc.id, toolKey: cand.toolKey });
+      });
+    });
+    return { cases: cases, train: train, val: val, rows: rows };
+  }
+
+  /* =========================================================
+     5. 逻辑回归训练、温度缩放、验证指标
+     ========================================================= */
+  function sigmoid(z) {
+    if (z >= 0) { var e = Math.exp(-z); return 1 / (1 + e); }
+    var e2 = Math.exp(z);
+    return e2 / (1 + e2);
+  }
+
+  function standardizeRows(rows, mu, sd) {
+    return rows.map(function (r) {
+      return { y: r.y, z: r.x.map(function (v, j) { return (v - mu[j]) / sd[j]; }) };
+    });
+  }
+
+  function trainModel(baseRows, onlineRows, opts) {
+    opts = opts || {};
+    var epochs = opts.epochs || 420;
+    var lr = opts.lr || 0.14;
+    var l2 = opts.l2 || 0.0015;
+    var eps = 0.03;
+    var dim = FEATS.length;
+    var all = baseRows.concat(onlineRows || []);
+    var n = all.length;
+    var j, k, r;
+
+    /* 标准化参数只用基础训练集估计，验证/在线样本复用，避免泄漏 */
+    var mu = new Array(dim), sd = new Array(dim);
+    for (j = 0; j < dim; j++) {
+      var sum = 0;
+      for (k = 0; k < baseRows.length; k++) sum += baseRows[k].x[j];
+      mu[j] = sum / baseRows.length;
+      var v = 0;
+      for (k = 0; k < baseRows.length; k++) v += Math.pow(baseRows[k].x[j] - mu[j], 2);
+      sd[j] = Math.sqrt(v / baseRows.length) || 1;
+    }
+
+    var Z = all.map(function (row) {
+      return { y: row.y, z: row.x.map(function (val, jj) { return (val - mu[jj]) / sd[jj]; }) };
+    });
+
+    var meanY = 0;
+    for (k = 0; k < n; k++) meanY += Z[k].y;
+    meanY = meanY / n;
+    var w = new Array(dim).fill(0);
+    var velocity = new Array(dim).fill(0);
+    var b = Math.log(Math.max(1e-4, meanY) / Math.max(1e-4, 1 - meanY));
+    var hist = [], loss = 0;
+
+    for (var ep = 0; ep < epochs; ep++) {
+      var gW = new Array(dim).fill(0), gB = 0;
+      loss = 0;
+      for (k = 0; k < n; k++) {
+        var z = b;
+        for (j = 0; j < dim; j++) z += w[j] * Z[k].z[j];
+        var p = sigmoid(z);
+        var target = Z[k].y ? 1 - eps : eps;
+        loss += -(target * Math.log(Math.max(1e-9, p)) + (1 - target) * Math.log(Math.max(1e-9, 1 - p)));
+        var d = p - target;
+        gB += d;
+        for (j = 0; j < dim; j++) gW[j] += d * Z[k].z[j];
+      }
+      for (j = 0; j < dim; j++) {
+        velocity[j] = 0.9 * velocity[j] - lr * (gW[j] / n + l2 * w[j]);
+        w[j] += velocity[j];
+      }
+      b -= lr * gB / n;
+      if (ep % 10 === 0) hist.push(loss / n);
+    }
+    hist.push(loss / n);
+
+    var model = { w: w, b: b, mu: mu, sd: sd, hist: hist, epochs: epochs, T: 1, nTrain: baseRows.length, nOnline: (onlineRows || []).length, deltaW: null };
+    model.T = fitTemp(model);
+    model.metrics = evalModel(model);
+    return model;
+  }
+
+  function logitOf(x, model) {
+    var z = model.b;
+    for (var j = 0; j < FEATS.length; j++) z += model.w[j] * (x[j] - model.mu[j]) / model.sd[j];
+    return z;
+  }
+
+  function predictP(x, model) {
+    model = model || MODEL;
+    return sigmoid(logitOf(x, model) / (model.T || 1));
+  }
+
+  function fitTemp(model) {
+    var bestT = 1, bestNLL = Infinity;
+    for (var T = 0.55; T <= 2.55; T += 0.02) {
+      var nll = 0;
+      for (var i = 0; i < VAL_CASES.length; i++) {
+        for (var j = 0; j < VAL_CASES[i].cands.length; j++) {
+          var cand = VAL_CASES[i].cands[j];
+          var p = clamp(sigmoid(logitOf(cand.x, model) / T), 1e-6, 1 - 1e-6);
+          nll += -(cand.y * Math.log(p) + (1 - cand.y) * Math.log(1 - p));
+        }
+      }
+      if (nll < bestNLL) { bestNLL = nll; bestT = T; }
+    }
+    return bestT;
+  }
+
+  function evalModel(model) {
+    var n = 0, correct = 0, brier = 0, top1 = 0, baseTop1 = 0;
+    var ndcgSum = 0, ndcgN = 0, lowConf = 0, predSum = 0, ySum = 0;
+    var conf = [[0, 0], [0, 0]];
+    var caseCount = VAL_CASES.length;
+
+    VAL_CASES.forEach(function (cc) {
+      var scored = cc.cands.map(function (cand) {
+        var p = predictP(cand.x, model);
+        var pred = p >= 0.5 ? 1 : 0;
+        conf[cand.y][pred]++;
+        if (pred === cand.y) correct++;
+        brier += Math.pow(p - cand.y, 2);
+        if (p >= 0.45 && p < 0.62) lowConf++;
+        predSum += p; ySum += cand.y;
+        n++;
+        return { cand: cand, p: p };
+      });
+
+      scored.sort(function (a, b) { return b.p - a.p; });
+      if (scored.length && scored[0].cand.y === 1) top1++;
+
+      var byBase = cc.cands.slice().sort(function (a, b) { return b.base - a.base; });
+      if (byBase.length && byBase[0].y === 1) baseTop1++;
+
+      var dcg = 0, idcg = 0;
+      for (var i = 0; i < Math.min(3, scored.length); i++) dcg += scored[i].cand.y / Math.log2(i + 2);
+      var ideal = cc.cands.map(function (c) { return c.y; }).sort(function (a, b) { return b - a; });
+      for (var j = 0; j < Math.min(3, ideal.length); j++) idcg += ideal[j] / Math.log2(j + 2);
+      if (idcg > 0) { ndcgSum += dcg / idcg; ndcgN++; }
+    });
+
+    return {
+      n: n, correct: correct, acc: correct / Math.max(1, n), brier: brier / Math.max(1, n),
+      top1: top1 / Math.max(1, caseCount), baseTop1: baseTop1 / Math.max(1, caseCount),
+      ndcg: ndcgSum / Math.max(1, ndcgN), lowConf: lowConf,
+      meanP: predSum / Math.max(1, n), meanY: ySum / Math.max(1, n),
+      conf: conf, nTrainRows: BASE_ROWS.length,
+      nValRows: n, nValCases: caseCount, nTrainCases: DATASET.train.length
+    };
+  }
+
+  /* =========================================================
+     6. 数据集与初始模型
+     ========================================================= */
+  var DATASET = buildDataset();
+  var TRAIN_CASES = DATASET.train;
+  var VAL_CASES = DATASET.val;
+  var BASE_ROWS = DATASET.rows;
+  MODEL = trainModel(BASE_ROWS, [], { epochs: 420 });
+
+  /* =========================================================
+     7. 当前状态 → 候选、排序、分支
+     ========================================================= */
+  function stateObject() {
+    var c = curCasing(), f = FORM_OF(state.form);
+    return {
+      form: state.form, casing: state.casing, drift: c.drift, od: state.od,
+      fishBore: f.bore, fishId: state.fishId, len: state.len, incl: state.incl,
+      bottom: state.bottom, circ: state.circ, material: state.material, stuck: state.stuck
+    };
+  }
+
+  function scoreRows(s) {
+    var rows = TOOLS.map(function (t, i) {
+      var e = evaluate(t, s);
+      var p = e.out ? null : predictP(e.x);
+      return { t: t, e: e, p: p, idx: i };
+    });
+    var usable = rows.filter(function (r) { return !r.e.out; }).sort(function (a, b) { return b.p - a.p; });
+    usable.forEach(function (r, i) { r.rank = i + 1; });
+    return { rows: rows, usable: usable, best: usable[0] || null, alt: usable[1] || null };
+  }
+
+  function bestFor(s) {
+    var arr = TOOLS.map(function (t) { return { t: t, e: evaluate(t, s) }; })
+      .filter(function (r) { return !r.e.out; });
+    arr.forEach(function (r) { r.p = predictP(r.e.x); });
+    arr.sort(function (a, b) { return b.p - a.p; });
+    return arr[0] || null;
+  }
+
+  function compute() {
+    var s = stateObject();
+    var sc = scoreRows(s);
+    var branches = null;
+    if (state.bottom === null) {
+      var sa = clone(s); sa.bottom = true;
+      var sb = clone(s); sb.bottom = false;
+      branches = { a: bestFor(sa), b: bestFor(sb) };
+    }
+    LAST = { s: s, rows: sc.rows, usable: sc.usable, best: sc.best, alt: sc.alt, branches: branches, c: curCasing(), f: FORM_OF(state.form) };
+    return LAST;
+  }
+
+  function tripText(best) {
+    if (!best) return '—';
+    if (best.p >= 0.82) return '1 趟（预计）';
+    if (best.p >= 0.65) return '1—2 趟';
+    return '2—3 趟';
+  }
+
+  function specLine(t) {
+    return '外径 ' + t.od + ' mm · ' + (t.bore ? '内孔 ' + t.bore + ' mm' : '无内孔') + ' · ' +
+      t.sizeLabel + ' ' + t.dmin + '—' + t.dmax + ' mm · 咬合 ≥' + t.minLen + ' m / 容纳 ≤' + t.maxLen + ' m · ' +
+      '最大井斜 ' + t.maxIncl + '° · 需循环 ' + (t.circ ? '是' : '否') + ' · 需落底 ' + (t.needBottom ? '是' : '否') +
+      ' · 历史成功率 ' + Math.round(succNow(t) * 100) + '%';
+  }
+
+  function contribs(row) {
+    if (!row || row.e.out) return [];
+    var z = row.e.x.map(function (v, j) { return (v - MODEL.mu[j]) / MODEL.sd[j]; });
+    return FEATS.map(function (f, j) {
+      return { key: f.key, label: f.label, w: MODEL.w[j], z: z[j], v: MODEL.w[j] * z[j] };
+    });
+  }
+
+  /* =========================================================
+     8. 描述解析
+     ========================================================= */
+  function parseDescription(text) {
+    var t = String(text || '').replace(/[，,]/g, '，').replace(/[；;]/g, '；').replace(/[：:]/g, '：');
+    var f = {}, m;
+
+    if (/5\s*[-–—]?\s*1\s*\/\s*2/.test(t)) f.casing = /23\s*#/.test(t) ? 1 : 0;
+    else if (/(?:^|\s)7\s*(?:"|”|in|英寸|#)/i.test(t)) f.casing = 2;
+
+    if (/电缆|钢丝绳|钢丝|柔索/.test(t)) f.form = 'cable';
+    else if (/抽油杆|杆体|加重杆/.test(t)) f.form = 'rod';
+    else if (/钢球|牙轮|铁屑|碎屑|小件/.test(t)) f.form = 'solid';
+    else if (/扶正器|井下工具|工具串|钻头|大直径/.test(t)) f.form = 'toolbig';
+    else if (/油管|钻杆|套管|管状|管体/.test(t)) f.form = 'tubular';
+
+    if ((m = /(?:外径|直径)\s*[:：]?\s*(\d+(?:\.\d+)?)/.exec(t)) || (m = /[∅Φφ]\s*(\d+(?:\.\d+)?)/.exec(t))) f.od = Number(m[1]);
+    else if ((m = /(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*(?:的)?\s*(?:油管|抽油杆|电缆|钢球|工具|落物)/.exec(t))) f.od = Number(m[1]);
+
+    if ((m = /内径\s*[:：]?\s*(\d+(?:\.\d+)?)/.exec(t)) || (m = /\bID\s*[:：]?\s*(\d+(?:\.\d+)?)/i.exec(t))) f.fishId = Number(m[1]);
+
+    if ((m = /(?:长度|长约|长为|长)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(mm|毫米|m|米)/.exec(t))) {
+      f.len = Number(m[1]) * ((/mm|毫米/.test(m[2])) ? 0.001 : 1);
+    }
+
+    if ((m = /井斜\s*[:：]?\s*(\d+(?:\.\d+)?)/.exec(t)) || (m = /(\d+(?:\.\d+)?)\s*°/.exec(t))) f.incl = Number(m[1]);
+
+    if (/落底(?:状态)?\s*[:：]?\s*(?:未知|不明)|未确认落底|是否落底未知|落底情况不明/.test(t)) f.bottom = null;
+    else if (/未落底|悬空|没有落底/.test(t)) f.bottom = false;
+    else if (/已落底|落在井底|落底/.test(t)) f.bottom = true;
+
+    if (/非铁磁|非磁性|无磁性|不锈钢|铝|铜/.test(t)) f.material = 'non';
+    else if (/铁磁|磁性|碳钢|钢|铁/.test(t)) f.material = 'ferro';
+
+    if (/未卡阻|无卡阻|不卡|没有卡阻/.test(t)) f.stuck = 'none';
+    else if (/被埋|埋住|砂埋|埋没/.test(t)) f.stuck = 'buried';
+    else if (/水泥卡|水泥环|水泥/.test(t)) f.stuck = 'cement';
+    else if (/砂卡|出砂|砂桥/.test(t)) f.stuck = 'sand';
+
+    if (/不可循环|不能循环|无法循环|无循环|不循环/.test(t)) f.circ = false;
+    else if (/可循环|能循环|循环洗井|正循环|反循环|循环/.test(t)) f.circ = true;
+
+    return { fields: f, count: Object.keys(f).length };
+  }
+
+  function applyParsed(res, silent) {
+    var f = res.fields;
+    state.src = freshSrc();
+    if (Object.prototype.hasOwnProperty.call(f, 'casing')) { state.casing = f.casing; state.src.casing = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'form')) { state.form = f.form; state.src.form = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'od')) { state.od = Math.round(f.od); state.src.od = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'fishId')) { state.fishId = Math.round(f.fishId); state.src.fishId = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'len')) { state.len = Math.round(f.len * 10) / 10; state.src.len = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'incl')) { state.incl = Math.round(f.incl); state.src.incl = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'bottom')) { state.bottom = f.bottom; state.src.bottom = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'material')) { state.material = f.material; state.src.material = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'stuck')) { state.stuck = f.stuck; state.src.stuck = true; }
+    if (Object.prototype.hasOwnProperty.call(f, 'circ')) { state.circ = f.circ; state.src.circ = true; }
+
+    syncControls();
+    renderAll();
+    el('parse-note').textContent = '识别 ' + res.count + ' / 10 字段' + (res.count < 10 ? ' · 其余沿用当前值' : ' · 全部字段来自描述');
+    if (!silent) {
+      trace('01', '解析现场描述：识别 <b>' + res.count + '/10</b> 字段 · 形态 <b>' + FORM_OF(state.form).name +
+        '</b> · 外径 <b>' + state.od + ' mm</b> · 落底 <b>' + (state.bottom === true ? '已落底' : (state.bottom === false ? '悬空' : '未知')) + '</b>',
+        res.count >= 7 ? 'ok' : 'warn');
+    }
+  }
+
+  /* =========================================================
+     9. 工具构造示意 / 井筒剖面（沿用原实现，按学习排序结果调整）
      ========================================================= */
   function toolArt(key) {
     var S = '#1d4e50', F = '#e7eee9', R = '#a64b3c';
     var g = '<g transform="translate(105,8) scale(1.04)">';
-
     function sub(w) {
       return '<rect x="' + (-w / 2) + '" y="0" width="' + w + '" height="14" rx="3" fill="' + F + '" stroke="' + S + '"/>';
     }
@@ -369,14 +837,11 @@
     return g + '</g>';
   }
 
-  /* =========================================================
-     井筒剖面：通径按毫米比例绘制，落底贴井底，工具与落物咬合
-     ========================================================= */
   function drawSchematic(best) {
     var c = curCasing();
-    var PX = 0.66;                 /* mm → px */
+    var PX = 0.66;
     var CX = 144, TOP = 62, BOT = 392, CY = 50;
-    var vis = state.incl * 0.45;   /* 图示倾角按 0.45 缩小，标注非等比例 */
+    var vis = state.incl * 0.45;
     var a = vis * Math.PI / 180;
     var half = c.drift * PX / 2;
     var wall = 6;
@@ -393,7 +858,7 @@
         ((best.t.key === 'rope' || best.t.key === 'thin') ? 8 : 18);
       if (state.bottom === true) toolBottom = Math.min(BOT - 4, fishTop + overlap);
       else if (state.bottom === false) toolBottom = fishTop - 10;
-      else toolBottom = Math.min(BOT - 4, fishTop + overlap);  /* 未知道：按落底分支画咬合，鱼顶用虚线标未知 */
+      else toolBottom = Math.min(BOT - 4, fishTop + overlap);
       toolTop = Math.max(TOP + 20, toolBottom - 64);
     }
 
@@ -405,37 +870,27 @@
       };
     }
 
-    /* 大斜度时井底会转到 viewBox 左侧之外：整体右移，保证套管与标签不出框 */
     var sinA = Math.sin(a), cosA = Math.cos(a);
     var xLeftBottom = CX - (half + wall) * cosA - (BOT - CY) * sinA;
     var shiftX = Math.max(0, 8 - xLeftBottom);
 
     var s = '<g transform="translate(' + shiftX.toFixed(1) + ',0) rotate(' + vis.toFixed(2) + ',' + CX + ',' + CY + ')">';
-
-    /* 套管壁（内径 = 通径） */
     s += '<rect x="' + (CX - half - wall) + '" y="' + TOP + '" width="' + wall + '" height="' + (BOT - TOP) + '" fill="#f0ede4" stroke="#d3c9b6"/>';
     s += '<rect x="' + (CX + half) + '" y="' + TOP + '" width="' + wall + '" height="' + (BOT - TOP) + '" fill="#f0ede4" stroke="#d3c9b6"/>';
-    /* 井口 */
     s += '<rect x="' + (CX - half - wall - 8) + '" y="' + (TOP - 12) + '" width="' + (2 * (half + wall) + 16) + '" height="12" rx="3" fill="#e3dccd" stroke="#d3c9b6"/>';
-    /* 井底 */
     s += '<rect x="' + (CX - half) + '" y="' + BOT + '" width="' + (2 * half) + '" height="6" fill="#e3dccd" stroke="#d3c9b6"/>';
 
-    /* 落物 */
     s += '<rect x="' + (CX - fishW / 2) + '" y="' + fishTop + '" width="' + fishW + '" height="' + fishH + '" rx="2" fill="#f5e6e1" stroke="#a64b3c" stroke-width="1.4"' + (dashed ? ' stroke-dasharray="4 3"' : '') + '/>';
     if (state.form === 'cable') {
       s += '<path d="M' + (CX - fishW / 2 + 2) + ' ' + (fishTop + 4) + ' q' + (fishW / 2) + ' 6 0 12 q' + (-fishW / 2) + ' 6 0 12" fill="none" stroke="#a64b3c" stroke-width="1" opacity=".7"/>';
     }
 
-    /* 工具与工具串 */
     if (best) s += toolGlyph(best.t, toolTop, toolBottom, toolW);
-
     s += '</g>';
 
-    /* ---- 文字标签（放在套管外侧，避免压住套管壁） ---- */
     var pFish = rp(CX + half + wall + 6, fishTop + 10);
-    var fishAnchor = 'start';
-    s += '<text x="' + pFish.x.toFixed(1) + '" y="' + pFish.y.toFixed(1) + '" font-size="9" fill="#a64b3c" text-anchor="' + fishAnchor + '">落物 ' + state.od + ' mm</text>';
-    s += '<text x="' + pFish.x.toFixed(1) + '" y="' + (pFish.y + 12).toFixed(1) + '" font-size="8.5" fill="#a64b3c" text-anchor="' + fishAnchor + '">' + fmt1(state.len) + ' m · ' + (state.bottom === true ? '已落底' : (state.bottom === false ? '悬空' : '落底未知')) + '</text>';
+    s += '<text x="' + pFish.x.toFixed(1) + '" y="' + pFish.y.toFixed(1) + '" font-size="9" fill="#a64b3c" text-anchor="start">落物 ' + state.od + ' mm</text>';
+    s += '<text x="' + pFish.x.toFixed(1) + '" y="' + (pFish.y + 12).toFixed(1) + '" font-size="8.5" fill="#a64b3c" text-anchor="start">' + fmt1(state.len) + ' m · ' + (state.bottom === true ? '已落底' : (state.bottom === false ? '悬空' : '落底未知')) + '</text>';
 
     var pWell = rp(CX + half + wall + 8, TOP + 2);
     s += '<text x="' + pWell.x.toFixed(1) + '" y="' + pWell.y.toFixed(1) + '" font-size="8.5" fill="#99a3a4" font-family="monospace">井口</text>';
@@ -469,9 +924,12 @@
       } else if (state.bottom === null) {
         s += '<text x="' + pT.x.toFixed(1) + '" y="' + (pT.y + 11).toFixed(1) + '" font-size="8" fill="#9a6b1d" text-anchor="' + (useR ? 'start' : 'end') + '">待铅印确认</text>';
       }
+    } else {
+      var pNone = rp(CX, TOP + 30);
+      s += '<text x="' + pNone.x.toFixed(1) + '" y="' + pNone.y.toFixed(1) + '" font-size="9" fill="#a64b3c" text-anchor="middle">0 件可行工具</text>';
+      s += '<text x="' + pNone.x.toFixed(1) + '" y="' + (pNone.y + 12).toFixed(1) + '" font-size="8" fill="#a64b3c" text-anchor="middle">先走套铣 / 磨铣工序</text>';
     }
 
-    /* ---- 井斜角标：从垂直方向量起，与井身使用同一图示角度 ---- */
     s += '<g transform="translate(10,26)">';
     s += '<line x1="0" y1="0" x2="0" y2="28" stroke="#beb19a" stroke-dasharray="3 2"/>';
     s += '<line x1="0" y1="0" x2="' + (-28 * Math.sin(a)).toFixed(1) + '" y2="' + (28 * Math.cos(a)).toFixed(1) + '" stroke="#1d4e50" stroke-width="1.6"/>';
@@ -539,151 +997,420 @@
   }
 
   /* =========================================================
-     渲染
+     10. 各阶段渲染
      ========================================================= */
-  function render() {
-    var c = curCasing();
-    var f = FORM_OF(state.form);
-    var s = {
-      form: state.form, casing: c, drift: c.drift, od: state.od, fishId: state.fishId,
-      fishBore: f.bore, len: state.len, incl: state.incl, bottom: state.bottom,
-      circ: state.circ, material: state.material, stuck: state.stuck
-    };
-
-    var rows = rank(s);
-    var usable = rows.filter(function (r) { return !r.e.out; });
-    var best = usable[0] || null;
-    var hardCount = rows.length - usable.length;
-
-    var branchA = null, branchB = null;
-    if (state.bottom === null) {
-      var sa = clone(s); sa.bottom = true;
-      var sb = clone(s); sb.bottom = false;
-      branchA = bestOf(rank(sa));
-      branchB = bestOf(rank(sb));
-    }
-
-    el('st-tool').textContent = best ? (best.t.name + (state.bottom === null && best.t.needBottom ? '（条件）' : '')) : (state.stuck === 'buried' ? '需先套铣/磨铣' : '无可用工具');
-    el('st-score').textContent = best ? best.score.toFixed(2) : '—';
-    el('st-trip').textContent = tripText(best);
-    el('st-excl').innerHTML = hardCount + ' <small>/ ' + TOOLS.length + ' 件</small>';
-    el('sch-hint').textContent = state.od + ' mm × ' + fmt1(state.len) + ' m · 通径 ' + fmt1(c.drift) + ' mm';
-    el('art-hint').textContent = best ? best.t.name : '—';
-    el('art-note').textContent = best ? best.t.note :
-      '当前没有通过硬约束的打捞工具。系统不会为了给出答案而推荐物理不可行的工具，应先走套铣/磨铣工序清障。';
-    el('toolart').innerHTML = best ? toolArt(best.t.key) : '';
-
-    /* 排序列表：不可用标红并列出全部原因，可用行 title 带完整规格与备注 */
-    var rankNo = 0;
-    el('rank').innerHTML = rows.map(function (r) {
-      var t = r.t, e = r.e, head;
-      if (e.out) {
-        return '<div class="rankrow out" title="不可用：' + e.why + '｜' + toolTitle(t) + '">' +
-          '<div class="l1"><span class="mono" style="font-size:9.5px;color:var(--ink-4)">—</span>' +
-          '<span class="nm">' + t.name + '</span><span class="sc">不可用</span></div>' +
-          '<div class="meta">' + sizeMeta(t) + '</div>' +
-          '<div class="why">不可用：' + e.why + '</div></div>';
-      }
-      rankNo++;
-      var badge = rankNo === 1
-        ? (state.bottom === null && t.needBottom ? ' <span class="db warn">条件首选</span>' : ' <span class="db ok">首选</span>')
-        : '';
-      head = '<div class="l1"><span class="mono" style="font-size:9.5px;color:var(--ink-4)">' + rankNo + '</span>' +
-        '<span class="nm">' + t.name + badge + '</span>' +
-        '<span class="sc">' + e.score.toFixed(2) + '</span></div>' +
-        '<div class="dbar" style="margin-top:3px"><span class="track"><i style="width:' + (e.score * 100).toFixed(0) + '%"></i></span>' +
-        '<span class="val">' + Math.round(e.score * 100) + '%</span></div>' +
-        '<div class="meta">' + sizeMeta(t) + '</div>';
-      if (e.warns.length) head += '<div class="warnline">' + e.warns.join('；') + '</div>';
-      return '<div class="rankrow" title="' + toolTitle(t) + '">' + head + '</div>';
-    }).join('');
-
-    /* 分项得分 */
-    if (best) {
-      var clearance = '工具外径 ' + best.t.od + ' mm ≤ 通径 ' + fmt1(c.drift) + ' − 2×6 = ' + fmt1(c.drift - 12) + ' mm';
-      var catchTxt = best.t.basis === 'id'
-        ? '落物内径 ' + state.fishId + ' mm 在' + best.t.sizeLabel + ' ' + best.t.dmin + '—' + best.t.dmax + ' mm 内'
-        : '落物外径 ' + state.od + ' mm 在' + best.t.sizeLabel + ' ' + best.t.dmin + '—' + best.t.dmax + ' mm 内';
-      var lenTxt = '落物长度 ' + fmt1(state.len) + ' m ≥ 最小咬合长度 ' + fmt1(best.t.minLen) + ' m';
-      el('parts').innerHTML = best.e.parts.map(function (x) {
-        return '<div class="dbar" style="padding:4px 0"><span style="width:64px;font-size:10.5px">' + x.k + '</span>' +
-          '<span class="track"><i style="width:' + (x.p * 100).toFixed(0) + '%"></i></span>' +
-          '<span class="val">' + (x.w * x.p).toFixed(3) + ' / ' + x.w.toFixed(2) + '</span></div>';
-      }).join('') +
-        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3);border-top:1px solid var(--line);margin-top:6px;padding-top:6px">' +
-        '<span>历史成功率（该工具）</span><span class="mono">' + (best.t.succ * 100).toFixed(0) + '%</span></div>' +
-        '<div style="font-size:10px;color:var(--ink-3);line-height:1.65;margin-top:5px">' +
-        clearance + '<br>' + catchTxt + '<br>' + lenTxt + '</div>';
-    } else {
-      el('parts').innerHTML = '<div style="font-size:11px;color:var(--ink-3);line-height:1.65">没有可用工具，无法分项评分。' +
-        '硬约束已经把所有物理不可行的选项排除，危险推荐率保持 0%。</div>';
-    }
-
-    renderOrders(best, usable, branchA, branchB);
-    renderPrep(best);
-    renderTable(best);
-    renderNote(rows, usable, best, branchA, branchB);
-    drawSchematic(best);
+  function renderAll() {
+    var L = compute();
+    renderHeader(L);
+    renderMatrix(L);
+    drawSchematic(L.best);
+    renderToolArt(L);
+    renderStage0(L);
+    renderStage1(L);
+    renderStage2(L);
+    renderStage3(L);
+    renderStage4(L);
+    renderModelBox();
+    renderNote(L);
   }
 
-  /* ---------- 作业顺序 ---------- */
-  function renderOrders(best, usable, branchA, branchB) {
+  function renderHeader(L) {
+    el('st-tool').textContent = L.best
+      ? (L.best.t.name + (state.bottom === null && L.best.t.needBottom ? '（条件）' : ''))
+      : (state.stuck === 'buried' ? '需先清障' : '无可行工具');
+    el('st-prob').innerHTML = L.best ? (L.best.p * 100).toFixed(0) + '<small>%</small>' : '—';
+    el('st-top1').innerHTML = (MODEL.metrics.top1 * 100).toFixed(1) + '<small>%</small>';
+    el('st-excl').innerHTML = (TOOLS.length - L.usable.length) + ' <small>/ ' + TOOLS.length + ' 件</small>';
+  }
+
+  function renderToolArt(L) {
+    var row = state.focus ? findRow(L, state.focus) : L.best;
+    var t = row ? row.t : null;
+    el('art-hint').textContent = t ? t.name : '—';
+    el('toolart').innerHTML = t ? toolArt(t.key) : '';
+    if (!t) {
+      el('art-note').textContent = '当前没有通过硬约束的打捞工具。系统不会为了给出答案而显示物理不可行的工具，应先走套铣/磨铣工序清障。';
+    } else {
+      el('art-note').textContent = t.note + (row.e.out ? '（当前硬约束下不可用）' : '（当前 p=' + (row.p * 100).toFixed(1) + '%）');
+    }
+  }
+
+  function findRow(L, key) {
+    for (var i = 0; i < L.rows.length; i++) if (L.rows[i].t.key === key) return L.rows[i];
+    return null;
+  }
+
+  function renderMatrix(L) {
+    var order = L.rows.slice().sort(function (a, b) {
+      if (a.e.out !== b.e.out) return a.e.out ? 1 : -1;
+      if (!a.e.out) return b.p - a.p;
+      return a.idx - b.idx;
+    });
+    var head = '<table class="mx"><colgroup><col style="width:18px"><col style="width:96px"><col style="width:30px"><col style="width:74px">' +
+      '<col style="width:36px"><col style="width:36px"><col style="width:36px"><col style="width:36px"><col style="width:36px">' +
+      '<col style="width:38px"><col style="width:34px"><col style="width:52px"></colgroup><thead><tr>' +
+      '<th>#</th><th>工具</th><th>外径</th><th>可捞区间</th>' +
+      FORMS.map(function (f) {
+        return '<th class="cf' + (f.key === state.form ? ' cur' : '') + '" data-form="' + f.key + '" title="点击按「' + f.name + '」重算">' + f.name.replace('体', '').replace('类', '').replace('小件', '').replace('大直径工具', '大件') + '</th>';
+      }).join('') +
+      '<th>历史</th><th>p</th><th>状态</th></tr></thead><tbody>';
+
+    var body = order.map(function (r) {
+      var t = r.t, e = r.e;
+      var cls = 'toolrow' + (L.best && L.best.t.key === t.key ? ' best' : '') + (state.focus === t.key ? ' focus' : '');
+      var rank = e.out ? '—' : r.rank;
+      var range = (t.basis === 'id' ? '内径 ' : '外径 ') + t.dmin + '—' + t.dmax;
+      var cells = FORMS.map(function (f) {
+        var aff = t.form[f.key] || 0;
+        var txt = f.key === state.form ? String(Math.round(aff * 100)) : (aff >= 0.4 ? String(Math.round(aff * 100)) : '');
+        var alpha = 0.05 + aff * 0.72;
+        var bg = e.out ? 'rgba(153,163,164,.08)' : 'rgba(36,92,90,' + alpha.toFixed(2) + ')';
+        var fg = !e.out && aff > 0.55 ? '#fff' : 'var(--ink-4)';
+        return '<td class="cell' + (f.key === state.form ? ' cur' : '') + '" title="' + esc(t.name + ' × ' + f.name + '：形态适用度 ' + Math.round(aff * 100) + '%' + (e.out ? '（当前不可用：' + e.why + '）' : '')) + '">' +
+          '<i style="background:' + bg + ';color:' + fg + '">' + (e.out ? '×' : txt) + '</i></td>';
+      }).join('');
+      var st;
+      if (e.out) st = '<span class="st no">排除</span>';
+      else if (L.best && L.best.t.key === t.key) st = '<span class="st ok">首选</span>';
+      else if (L.alt && L.alt.t.key === t.key) st = '<span class="st ok">备选</span>';
+      else if (state.bottom === null && t.needBottom) st = '<span class="st cond">条件</span>';
+      else st = '<span class="st">可用</span>';
+      var hist = Math.round(succNow(t) * 100) + '%' + (FB.byTool[t.key] ? ' *' : '');
+      return '<tr class="' + cls + '" data-tool="' + t.key + '" title="' + esc(t.name + '｜' + specLine(t) + (e.out ? '｜不可用：' + e.why : '')) + '">' +
+        '<td class="num" style="text-align:center">' + rank + '</td>' +
+        '<td class="tn">' + t.name + '</td>' +
+        '<td class="num">' + t.od + '</td>' +
+        '<td class="num">' + range + '</td>' +
+        cells +
+        '<td class="num">' + hist + '</td>' +
+        '<td class="num">' + (e.out ? '—' : (r.p * 100).toFixed(0) + '%') + '</td>' +
+        '<td>' + st + '</td></tr>';
+    }).join('');
+
+    el('rank').innerHTML = head + body + '</tbody></table>';
+    el('rank-hint').textContent = L.usable.length + ' 件可用 / ' + (TOOLS.length - L.usable.length) + ' 件排除 · 按学习排序 p 排列';
+
+    var focusRow = state.focus ? findRow(L, state.focus) : L.best;
+    if (!focusRow) {
+      el('tool-detail').innerHTML = '<b>当前没有可行工具。</b> 硬约束已排除全部直接打捞工具；请先走套铣/磨铣工序。';
+      return;
+    }
+    var tt = focusRow.t, ee = focusRow.e;
+    var html = '<b>' + tt.name + '</b>' + (state.focus ? '（点击选中）' : '（默认首选）') +
+      ' · <span class="mono">' + specLine(tt) + '</span><br>' + esc(tt.note);
+    if (ee.out) {
+      html += '<br><span class="why">不可用：' + esc(ee.why) + '</span>';
+    } else {
+      var cs = contribs(focusRow).slice().sort(function (a, b) { return Math.abs(b.v) - Math.abs(a.v); });
+      html += '<br><span class="ok">当前 p=' + (focusRow.p * 100).toFixed(1) + '%</span> · 贡献前三：' +
+        cs.slice(0, 3).map(function (c) { return c.label + ' ' + (c.v >= 0 ? '+' : '') + c.v.toFixed(2); }).join(' · ');
+    }
+    el('tool-detail').innerHTML = html;
+  }
+
+  function renderStage0(L) {
+    var f = L.f;
+    var rows = [
+      ['形态', f.name + '（' + f.desc + '）', 'form'],
+      ['外径', state.od + ' mm', 'od'],
+      ['内径', f.bore ? (state.fishId > 0 ? state.fishId + ' mm' : '未给出') : '无内孔（形态推定）', 'fishId'],
+      ['长度', fmt1(state.len) + ' m', 'len'],
+      ['井斜', state.incl + '°', 'incl'],
+      ['落底', state.bottom === true ? '已落底' : (state.bottom === false ? '悬空' : '未知'), 'bottom'],
+      ['材质', state.material === 'ferro' ? '铁磁性' : '非铁磁性', 'material'],
+      ['卡阻', stuckName(state.stuck), 'stuck'],
+      ['循环', state.circ ? '可循环洗井' : '不可循环', 'circ'],
+      ['套管', L.c.label + ' · 通径 ' + fmt1(L.c.drift) + ' mm', 'casing']
+    ];
+    el('fields').innerHTML = rows.map(function (r) {
+      var parsed = state.src[r[2]];
+      var srcTxt = parsed ? '解析' : '手工/沿用';
+      var srcCls = parsed ? 'parsed' : 'manual';
+      if (r[2] === 'fishId' && !f.bore) { srcTxt = '形态推定'; srcCls = 'manual'; }
+      return '<div class="fieldrow"><span class="fk">' + r[0] + '</span><span class="fv"><b>' + esc(r[1]) + '</b></span>' +
+        '<span class="fs ' + srcCls + '">' + srcTxt + '</span></div>';
+    }).join('');
+
+    var issues = [];
+    if (state.bottom === null) issues.push(['warn', '落底未知：需先铅印确认鱼顶，方案保留落底 / 悬空两分支']);
+    if (f.bore && state.fishId <= 0) issues.push(['bad', '内径未给出：公锥 / 捞矛无法校核，会被硬约束排除']);
+    if (state.stuck === 'buried') issues.push(['bad', '落物被埋：鱼顶不可达，直接打捞全部排除']);
+    if (state.stuck === 'sand' || state.stuck === 'cement') issues.push(['warn', '卡阻：工具串加震击器 + 安全接头，先套铣 / 磨铣再捞']);
+    if (state.od > L.c.drift - 12) issues.push(['warn', '落物外径 ' + state.od + ' mm 已超过工具外径上限 ' + fmt1(L.c.drift - 12) + ' mm：直接打捞候选可能为 0']);
+    if (!state.circ) issues.push(['warn', '不可循环：篮式捞筒 / 套铣 / 磨铣工序不可用']);
+    if (state.material !== 'ferro') issues.push(['warn', '非铁磁性：磁力打捞器全部排除']);
+    if (!issues.length) issues.push(['ok', '字段完整，可进入约束推理']);
+    el('quality').innerHTML = '<b>质控：</b>' + issues.map(function (x) {
+      return '<span class="' + (x[0] === 'ok' ? '' : x[0]) + '">' + x[1] + '</span>';
+    }).join('；') + '。';
+  }
+
+  function gateValue(key, L) {
+    var c = L.c, f = L.f;
+    if (key === 'reach') return '卡阻：' + stuckName(state.stuck);
+    if (key === 'drift') return '工具外径 ≤ 通径 ' + fmt1(c.drift) + ' − 12 = ' + fmt1(c.drift - 12) + ' mm';
+    if (key === 'size') return '落物外径 ' + state.od + ' mm' + (f.bore ? ' · 内径 ' + (state.fishId || '未给出') + ' mm' : '');
+    if (key === 'material') return '落物：' + (state.material === 'ferro' ? '铁磁性' : '非铁磁性');
+    if (key === 'incl') return '井斜 ' + state.incl + '°';
+    if (key === 'circ') return '本井' + (state.circ ? '可循环' : '不可循环');
+    if (key === 'bottom') return '落底：' + (state.bottom === true ? '已落底' : (state.bottom === false ? '悬空' : '未知'));
+    return '落物长度 ' + fmt1(state.len) + ' m';
+  }
+
+  function renderStage1(L) {
+    var gates = [
+      { key: 'reach', label: '鱼顶可达' },
+      { key: 'drift', label: '通径 / 单边间隙' },
+      { key: 'size', label: '可捞区间' },
+      { key: 'material', label: '材质' },
+      { key: 'incl', label: '井斜' },
+      { key: 'circ', label: '循环' },
+      { key: 'bottom', label: '落底' },
+      { key: 'length', label: '咬合长度' }
+    ];
+    var alive = TOOLS.slice();
+    var html = '';
+    gates.forEach(function (g, i) {
+      var before = alive.length;
+      alive = alive.filter(function (t) {
+        var row = findRow(L, t.key);
+        var gate = null;
+        for (var k = 0; k < row.e.gates.length; k++) if (row.e.gates[k].key === g.key) gate = row.e.gates[k];
+        return gate && gate.ok;
+      });
+      var cut = before - alive.length;
+      var pct = alive.length / TOOLS.length * 100;
+      html += '<div class="gaterow">' +
+        '<span class="gi">' + (i + 1) + '</span>' +
+        '<span class="gt"><b>' + g.label + '</b><em>' + esc(gateValue(g.key, L)) + '</em></span>' +
+        '<span class="gv ' + (cut ? 'no' : 'ok') + '">' + alive.length + ' / ' + TOOLS.length + (cut ? ' · −' + cut : '') + '</span>' +
+        '<span class="gbar"><i class="' + (cut ? 'no' : '') + '" style="width:' + pct.toFixed(1) + '%"></i></span>' +
+        '</div>';
+    });
+    el('gates').innerHTML = html;
+
+    var ex = L.rows.filter(function (r) { return r.e.out; });
+    if (!ex.length) {
+      el('excluded').innerHTML = '<div class="plain-note">本轮没有工具被硬约束排除；' + L.usable.length + ' 件工具进入学习排序。</div>';
+    } else {
+      el('excluded').innerHTML = ex.map(function (r) {
+        return '<div class="exrow"><span class="en">' + r.t.name + '</span><span class="er">' + esc(r.e.why) + '</span></div>';
+      }).join('');
+    }
+  }
+
+  function renderStage2(L) {
+    var m = MODEL.metrics;
+    el('m-n').textContent = m.nTrainCases + ' / ' + m.nValCases + ' 例';
+    el('m-acc').textContent = (m.acc * 100).toFixed(1) + '%';
+    el('m-top1').textContent = (m.top1 * 100).toFixed(1) + '%';
+    el('m-ndcg').textContent = m.ndcg.toFixed(3);
+    drawCurve();
+    drawCM();
+    drawWeights();
+    drawProbs(L);
+    drawParts(L);
+  }
+
+  function drawCurve() {
+    var svg = el('curve');
+    if (!svg) return;
+    var W = 320, H = 78, L = 28, R = 6, T = 6, B = 14;
+    var hist = MODEL.hist;
+    var lo = Math.min.apply(null, hist), hi = Math.max.apply(null, hist);
+    var pad = (hi - lo) * 0.16 || 0.01;
+    lo = Math.max(0, lo - pad); hi += pad;
+    function X(i) { return L + i * (W - L - R) / Math.max(1, hist.length - 1); }
+    function Y(v) { return T + (1 - (v - lo) / (hi - lo)) * (H - T - B); }
+    var s = '';
+    [0, 0.5, 1].forEach(function (t) {
+      var v = lo + (hi - lo) * t, y = Y(v);
+      s += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '" stroke="#efece1"/>' +
+        '<text x="' + (L - 3) + '" y="' + (y + 3) + '" text-anchor="end" font-size="7.5" font-family="monospace" fill="#99a3a4">' + v.toFixed(2) + '</text>';
+    });
+    var d = hist.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join('');
+    s += '<path d="' + d + '" fill="none" stroke="#1d4e50" stroke-width="1.8"/>';
+    s += '<text x="' + (W - R) + '" y="' + (H - 2) + '" text-anchor="end" font-size="7.5" font-family="monospace" fill="#99a3a4">' + MODEL.epochs + ' 轮</text>';
+    s += '<text x="' + L + '" y="' + (H - 2) + '" font-size="7.5" font-family="monospace" fill="#99a3a4">0</text>';
+    svg.innerHTML = s;
+  }
+
+  function drawCM() {
+    var conf = MODEL.metrics.conf;
+    var total = conf[0][0] + conf[0][1] + conf[1][0] + conf[1][1] || 1;
+    function cell(count, good, label) {
+      var q = count / total;
+      var bg = good ? 'rgba(36,92,90,' + (0.12 + q * 0.68).toFixed(2) + ')' : 'rgba(166,75,60,' + (0.10 + q * 0.55).toFixed(2) + ')';
+      var fg = q > 0.18 ? '#fff' : 'var(--ink-3)';
+      return '<i style="background:' + bg + ';color:' + fg + '" title="' + label + ' ' + count + ' 行（' + (q * 100).toFixed(1) + '%）">' + count + '</i>';
+    }
+    el('cm').innerHTML =
+      '<span class="lb">实际↓ / 预测→</span><span class="lb" style="text-align:center">成功</span><span class="lb" style="text-align:center">失败</span>' +
+      '<span class="lb">成功</span>' + cell(conf[1][1], true, '真阳性') + cell(conf[1][0], false, '假阴性') +
+      '<span class="lb">失败</span>' + cell(conf[0][1], false, '假阳性') + cell(conf[0][0], true, '真阴性');
+    el('cm-note').innerHTML = 'Brier <b>' + MODEL.metrics.brier.toFixed(3) + '</b> · 温度 T <b>' + MODEL.T.toFixed(2) +
+      '</b> · 预测均值 ' + (MODEL.metrics.meanP * 100).toFixed(1) + '% vs 实际 ' + (MODEL.metrics.meanY * 100).toFixed(1) +
+      '% · 低置信 ' + MODEL.metrics.lowConf + ' 行<br>主要错误：实际失败被判成功 <b>' + conf[0][1] +
+      '</b> 行（假阳性），所以方案必须保留备选与人工复核，不能把 p 当现场结论。';
+  }
+
+  function drawWeights() {
+    var rows = FEATS.map(function (f, j) { return { label: f.label, v: MODEL.w[j], hint: f.hint }; });
+    rows.sort(function (a, b) { return Math.abs(b.v) - Math.abs(a.v); });
+    var max = Math.max.apply(null, rows.map(function (r) { return Math.abs(r.v); })) || 1;
+    el('weights').innerHTML = '<div class="wgrid">' + rows.map(function (r) {
+      var pos = r.v >= 0;
+      var w = Math.abs(r.v) / max * 100;
+      return '<div class="wcell" title="' + esc(r.hint) + '"><span class="lb">' + r.label + '</span><span class="track"><i style="' +
+        (pos ? 'left:0' : 'right:0') + ';width:' + w.toFixed(1) + '%;background:' + (pos ? 'var(--jade)' : 'var(--bad)') + '"></i></span>' +
+        '<span class="val">' + (pos ? '+' : '') + r.v.toFixed(2) + '</span></div>';
+    }).join('') + '</div><p class="plain-note" style="margin-top:3px">标准化后权重；绿 = 推高成功概率，红 = 拉低。硬约束已先行过滤，权重不能把被排除的工具拉回候选。</p>';
+  }
+
+  function drawProbs(L) {
+    if (!L.usable.length) {
+      el('probs').innerHTML = '<p class="plain-note">0 件候选：学习排序没有输入，硬约束已经把直接打捞全部排除。</p>';
+      return;
+    }
+    el('probs').innerHTML = L.usable.slice(0, 3).map(function (r, i) {
+      return '<div class="dbar" style="padding:2.5px 0"><span style="width:74px;font-size:10px;color:' + (i === 0 ? 'var(--ink)' : 'var(--ink-3)') + '">' + r.t.name + '</span>' +
+        '<span class="track"><i style="width:' + (r.p * 100).toFixed(1) + '%;background:' + (i === 0 ? 'var(--jade)' : 'var(--line-3)') + '"></i></span>' +
+        '<span class="val">' + (r.p * 100).toFixed(0) + '%</span></div>';
+    }).join('');
+  }
+
+  function drawParts(L) {
+    if (!L.best) {
+      el('parts').innerHTML = '<p class="plain-note">没有可用候选，无法计算特征贡献。</p>';
+      return;
+    }
+    var cs = contribs(L.best).slice().sort(function (a, b) { return Math.abs(b.v) - Math.abs(a.v); });
+    var max = Math.max.apply(null, cs.map(function (c) { return Math.abs(c.v); })) || 1;
+    var sum = cs.reduce(function (a, c) { return a + c.v; }, 0) + MODEL.b;
+    el('parts').innerHTML = '<div class="wgrid">' + cs.map(function (c) {
+      var pos = c.v >= 0;
+      var w = Math.abs(c.v) / max * 100;
+      return '<div class="wcell" title="w=' + c.w.toFixed(3) + '，标准化特征 z=' + c.z.toFixed(2) + '"><span class="lb">' + c.label + '</span>' +
+        '<span class="track"><i style="' + (pos ? 'left:0' : 'right:0') + ';width:' + w.toFixed(1) + '%;background:' + (pos ? 'var(--jade)' : 'var(--bad)') + '"></i></span>' +
+        '<span class="val">' + (pos ? '+' : '') + c.v.toFixed(2) + '</span></div>';
+    }).join('') + '</div><div class="cmnote">logit = b + Σw·z = ' + sum.toFixed(2) + ' → p = ' + (L.best.p * 100).toFixed(1) + '%（温度 T=' + MODEL.T.toFixed(2) + '）</div>';
+  }
+
+  function renderStage3(L) {
+    renderPlan(L);
+    renderRisks(L);
+    renderOrders(L);
+    renderPrep(L);
+  }
+
+  function planWhy(row, L) {
+    var t = row.t, s = L.s;
+    var cs = contribs(row).slice().sort(function (a, b) { return Math.abs(b.v) - Math.abs(a.v); });
+    var top = cs.slice(0, 2).map(function (c) { return c.label + '（' + (c.v >= 0 ? '+' : '') + c.v.toFixed(2) + '）'; }).join('、');
+    var sizeTxt = t.basis === 'id'
+      ? '落物内径 ' + s.fishId + ' mm 在 ' + t.dmin + '—' + t.dmax + ' mm 内'
+      : '落物外径 ' + s.od + ' mm 在 ' + t.dmin + '—' + t.dmax + ' mm 内';
+    var lenTxt = '长度 ' + fmt1(s.len) + ' m ' + (s.len >= t.minLen ? '≥' : '<') + ' 最小咬合 ' + fmt1(t.minLen) + ' m';
+    var reachTxt = s.bottom === null && t.needBottom ? '落底未知，按条件推荐，需先铅印' : ('井斜 ' + s.incl + '° 在允许 ' + t.maxIncl + '° 内');
+    var comp = compScoreOf(t, s);
+    var compTxt = '工序复杂度' + (comp >= 0.8 ? '低' : (comp >= 0.55 ? '中' : '高'));
+    return '模型给它的成功概率 <b>' + (row.p * 100).toFixed(1) + '%</b>；' + sizeTxt + '，' + lenTxt + '，' + reachTxt +
+      '，历史成功率 <b>' + Math.round(succNow(t) * 100) + '%</b>，' + compTxt + '。贡献最大的两项：' + top + '。';
+  }
+
+  function renderPlan(L) {
+    var html;
+    if (L.best) {
+      html = '<div class="plan"><div class="plan-h"><span class="db ok">主工具</span><b>' + L.best.t.name + '</b>' +
+        '<span class="mono">p ' + (L.best.p * 100).toFixed(1) + '%</span></div>' +
+        '<div class="plan-spec">' + esc(specLine(L.best.t)) + '</div>' +
+        '<div class="plan-why">' + planWhy(L.best, L) + '</div></div>';
+      if (L.alt) {
+        html += '<div class="plan alt"><div class="plan-h"><span class="db plain">备选</span><b>' + L.alt.t.name + '</b>' +
+          '<span class="mono">p ' + (L.alt.p * 100).toFixed(1) + '%</span></div>' +
+          '<div class="plan-spec">' + esc(specLine(L.alt.t)) + '</div>' +
+          '<div class="plan-why">首选抓空或咬合失败时第二趟直接换它；差距 ' + ((L.best.p - L.alt.p) * 100).toFixed(1) + ' pts。' +
+          (L.best.p - L.alt.p < 0.08 ? ' <b>差距较小，必须保留人工复核。</b>' : '') + '</div></div>';
+      } else {
+        html += '<div class="plan alt"><div class="plan-h"><span class="db warn">备选</span><b>无第二候选</b></div>' +
+          '<div class="plan-why">硬约束后只剩一件工具。若首选失败，不要临时找同规格替代，转套铣/磨铣或人工评估。</div></div>';
+      }
+    } else {
+      html = '<div class="plan" style="border-color:var(--bad)"><div class="plan-h"><span class="db bad">0 候选</span><b>直接打捞不可行</b></div>' +
+        '<div class="plan-why">当前落物/井况下没有任何打捞工具通过硬约束。系统不会为了给出答案而推荐物理不可行项；方案转为<b>套铣 / 磨铣 / 清屑</b>工序，清障后重新解析落物。</div></div>';
+    }
+    el('plan-main').innerHTML = html;
+  }
+
+  function renderRisks(L) {
+    var risks = [];
+    if (L.best) {
+      if (L.best.p < 0.65) risks.push(['bad', '首选 p=' + (L.best.p * 100).toFixed(0) + '% < 65%：先人工复核，不要直接下工具']);
+      if (L.alt && L.best.p - L.alt.p < 0.08) risks.push(['warn', '首选与备选差距仅 ' + ((L.best.p - L.alt.p) * 100).toFixed(1) + ' pts：按并列处理，先打印/复核']);
+      if (state.bottom === null) risks.push(['warn', '落底未知：先铅印确认鱼顶，按落底/悬空两分支准备工具']);
+      if (state.stuck === 'sand' || state.stuck === 'cement') risks.push(['warn', '卡阻：工具串加震击器 + 安全接头；' + (state.stuck === 'sand' ? '先用套铣筒清洗砂桥' : '先套铣/磨铣水泥环') + '，不要硬提']);
+      if (state.material !== 'ferro') risks.push(['warn', '非铁磁性：磁力打捞器已全部排除，不能靠吸附']);
+      if (!state.circ) risks.push(['warn', '不可循环：篮式捞筒/套铣/磨铣不可用，需先恢复循环']);
+    } else {
+      risks.push(['bad', '0 件可行工具：鱼顶可能不可达或尺寸/井斜/循环条件不满足，先清障']);
+    }
+    if (state.stuck === 'buried') risks.push(['bad', '落物被埋：鱼顶不可达，直接打捞全部排除']);
+    if (state.od > L.c.drift - 14) risks.push(['warn', '落物外径接近通径上限，工具外径余量很小，下入前复核通径']);
+    if (!risks.length) risks.push(['ok', '硬约束全部通过；按主工具 + 备选执行，首趟后按实际咬合情况调整']);
+
+    el('risks').innerHTML = risks.map(function (r) {
+      return '<div class="riskline"><span class="' + (r[0] === 'ok' ? 'ok' : r[0]) + '">●</span> ' + r[1] + '</div>';
+    }).join('');
+  }
+
+  function renderOrders(L) {
     var o = [];
     var stuck = state.stuck;
-    var limit = curCasing().drift - 2 * CLEARANCE;
-    var washWarn = PREP[0].od > limit
-      ? ' <b>套铣筒 108 mm 超过本井上限 ' + fmt1(limit) + ' mm，需换小一级。</b>' : '';
-    var basketWarn = PREP[2].od > limit
-      ? ' <b>篮式筒 108 mm 超过本井上限 ' + fmt1(limit) + ' mm，需换小一级或改用反循环。</b>' : '';
+    var limit = L.c.drift - 2 * CLEARANCE;
+    var washWarn = PREP[0].od > limit ? ' <b>套铣筒 108 mm 超过本井上限 ' + fmt1(limit) + ' mm，需换小一级。</b>' : '';
+    var basketWarn = PREP[2].od > limit ? ' <b>篮式筒 108 mm 超过本井上限 ' + fmt1(limit) + ' mm，需换小一级或改用反循环。</b>' : '';
     var circWarn = state.circ ? '' : ' <b>本井不可循环</b>，套铣/磨铣/篮式清屑工序不可用，需先恢复循环或改用机械清障。';
 
     if (state.bottom === null) {
       o.push('<b>先打印（铅印）确认鱼顶</b>：落物是否落底、鱼顶是否规则、是否被砂埋。不要用通井规探底代替打印。');
-      o.push('<b>分支 A · 若已落底</b>：' + (branchA
-        ? '首选 <b>' + branchA.t.name + '</b>（' + branchA.score.toFixed(2) + '）；' + branchA.t.op
+      o.push('<b>分支 A · 若已落底</b>：' + (L.branches.a
+        ? '首选 <b>' + L.branches.a.t.name + '</b>（p ' + (L.branches.a.p * 100).toFixed(0) + '%）；' + L.branches.a.t.op
         : '无工具通过硬约束，先评估套铣/磨铣。'));
-      if (branchB && branchA && branchB.t.key === branchA.t.key) {
-        o.push('<b>分支 B · 若悬空</b>：首选同为 <b>' + branchB.t.name + '</b>（' + branchB.score.toFixed(2) + '）；动作同上，但需落底的工具全部不可用。');
+      if (L.branches.b && L.branches.a && L.branches.b.t.key === L.branches.a.t.key) {
+        o.push('<b>分支 B · 若悬空</b>：首选同为 <b>' + L.branches.b.t.name + '</b>（p ' + (L.branches.b.p * 100).toFixed(0) + '%）；动作同上，但需落底的工具全部不可用。');
       } else {
-        o.push('<b>分支 B · 若悬空</b>：' + (branchB
-          ? '首选 <b>' + branchB.t.name + '</b>（' + branchB.score.toFixed(2) + '）；' + branchB.t.op + ' 需落底的工具在这一分支全部不可用。'
+        o.push('<b>分支 B · 若悬空</b>：' + (L.branches.b
+          ? '首选 <b>' + L.branches.b.t.name + '</b>（p ' + (L.branches.b.p * 100).toFixed(0) + '%）；' + L.branches.b.t.op + ' 需落底的工具在这一分支全部不可用。'
           : '没有工具通过硬约束，需先打印鱼顶并评估套铣/磨铣。'));
       }
     }
 
-    if (best && state.bottom !== null) {
-      o.push('<b>本趟</b>：' + best.t.op);
-    }
-    if (best && (stuck === 'sand' || stuck === 'cement')) {
-      o.push('<b>工具串</b>：' + best.t.name + ' + 震击器 + 安全接头。' +
+    if (L.best && state.bottom !== null) o.push('<b>本趟</b>：' + L.best.t.op);
+    if (L.best && (stuck === 'sand' || stuck === 'cement')) {
+      o.push('<b>工具串</b>：' + L.best.t.name + ' + 震击器 + 安全接头。' +
         (stuck === 'sand' ? '砂卡时遇卡可震击解卡，安全接头保证能丢手退出。' : '水泥卡时先套铣/磨铣解除水泥环，再带震击器与安全接头下打捞工具。'));
     }
-
-    if (usable[1]) {
-      o.push('备选：<b>' + usable[1].t.name + '</b>（匹配度 ' + usable[1].score.toFixed(2) + '）。若首选抓空或咬合失败，第二趟直接换它，避免临时找工具。');
+    if (L.alt) {
+      o.push('备选：<b>' + L.alt.t.name + '</b>（p ' + (L.alt.p * 100).toFixed(0) + '%）。若首选抓空或咬合失败，第二趟直接换它，避免临时找工具。');
     }
-
-    if (!best) {
-      o.push('<b>无直接打捞工具</b>：先走工序——' +
-        (stuck === 'buried' ? '套铣筒清障 → ' : '') +
-        '平底磨鞋磨铣 → 篮式捞筒 / 反循环清屑 → 再评估打捞。不要带着卡瓦类工具硬下。' +
-        (stuck === 'buried' ? ' 清障后下打捞工具时，工具串再加震击器 + 安全接头。' : '') + washWarn + basketWarn + circWarn);
+    if (!L.best) {
+      o.push('<b>无直接打捞工具</b>：先走工序——' + (stuck === 'buried' ? '套铣筒清障 → ' : '') +
+        '平底磨鞋磨铣 → 篮式捞筒 / 反循环清屑 → 再评估打捞。不要带着卡瓦类工具硬下。' + washWarn + basketWarn + circWarn);
     } else if (state.od >= 88) {
       o.push('落物外径 ' + state.od + ' mm 偏大：若首选失败，不要反复下卡瓦类工具，转<b>平底磨鞋 + 篮式捞筒/反循环</b>磨铣清屑后再捞。');
     }
-
     if (stuck === 'sand' || stuck === 'cement') {
-      o.push('<b>解卡前置</b>：' + (stuck === 'sand' ? '砂卡先用套铣筒清洗砂桥' : '水泥卡先用套铣筒/平底磨鞋处理水泥环') + '，套铣到位后再下打捞工具；不要用打捞工具直接硬提。' + (best ? washWarn : '') + (best ? circWarn : ''));
+      o.push('<b>解卡前置</b>：' + (stuck === 'sand' ? '砂卡先用套铣筒清洗砂桥' : '水泥卡先用套铣筒/平底磨鞋处理水泥环') + '，套铣到位后再下打捞工具；不要用打捞工具直接硬提。' + (L.best ? washWarn : ''));
     }
-
+    if (L.best && L.best.p < 0.65) {
+      o.push('<b>低置信</b>：p=' + (L.best.p * 100).toFixed(0) + '%，先人工复核或打印确认；不要把模型概率当作现场结论。');
+    }
     el('orders').innerHTML = o.map(function (x) { return '<div>' + x + '</div>'; }).join('');
   }
 
-  /* ---------- 解卡 / 磨铣工序面板 ---------- */
-  function renderPrep(best) {
+  function renderPrep(L) {
     var stuck = state.stuck;
-    var c = curCasing();
-    var limit = c.drift - 2 * CLEARANCE;
+    var limit = L.c.drift - 2 * CLEARANCE;
     var washFit = PREP[0].od <= limit;
     var seq;
     if (stuck === 'buried') {
@@ -692,7 +1419,7 @@
       seq = '<b>砂卡</b>：先下<b>套铣筒</b>清洗砂桥，再下打捞工具；工具串加<b>震击器 + 安全接头</b>。平底磨鞋只在鱼顶不规则时使用。';
     } else if (stuck === 'cement') {
       seq = '<b>水泥卡</b>：套铣筒磨铣水泥环，必要时用平底磨鞋修整鱼顶，篮式捞筒/反循环清屑后再捞。';
-    } else if (!best) {
+    } else if (!L.best) {
       seq = '<b>无直接打捞工具</b>：改走磨铣工序——<b>平底磨鞋 + 篮式捞筒 / 反循环</b>清屑，再评估打捞。';
     } else {
       seq = '<b>当前未卡阻</b>：打捞工具可直接接触鱼顶，不需要套铣/磨铣。若后续出现砂卡、水泥卡或落物被埋，再启用下列工序。';
@@ -700,15 +1427,7 @@
     if (!washFit && stuck !== 'none') {
       seq += ' <b>注意</b>：套铣筒外径 108 mm 超过本井工具外径上限 ' + fmt1(limit) + ' mm，需换小一级套铣筒。';
     }
-    var prepBad = PREP.some(function (p) {
-      return (p.circ && !state.circ) || p.od > limit;
-    });
-    if (prepBad && (stuck !== 'none' || !best)) {
-      seq += ' <b>注意</b>：标「不可用」的工序工具不满足通径或循环条件，不能下；先恢复循环或换小一级工具。';
-    }
-    if (!best && stuck === 'none') {
-      seq += ' 本井工具外径上限 ' + fmt1(limit) + ' mm，选工序工具时同样要校核通径。';
-    }
+    if (!L.best && stuck === 'none') seq += ' 本井工具外径上限 ' + fmt1(limit) + ' mm，选工序工具时同样要校核通径。';
 
     var rows = PREP.map(function (p) {
       var pass = p.od <= limit;
@@ -723,77 +1442,91 @@
         if (p.key === 'wash') { status = '先做'; cls = 'ok'; }
         else if (p.key === 'mill') { status = '视情况'; cls = 'warn'; }
         else { status = '随后清屑'; cls = 'plain'; }
-      } else if (!best) {
+      } else if (!L.best) {
         if (p.key === 'wash') { status = '视情况'; cls = 'warn'; }
         else { status = '推荐'; cls = 'ok'; }
       }
       var fitTxt = bad.length ? ' · ' + bad.join('；') : '';
       return '<div class="prep-row"><div class="pn">' + p.name + '</div>' +
-        '<div class="pd">' + p.note + '<br><em>外径 ' + p.od + ' mm · ' + p.when + ' · 需循环 ' + (p.circ ? '是' : '否') + fitTxt + '</em></div>' +
+        '<div class="pd">' + p.note + '<em>外径 ' + p.od + ' mm · ' + p.when + ' · 需循环 ' + (p.circ ? '是' : '否') + fitTxt + '</em></div>' +
         '<div><span class="db ' + cls + '">' + status + '</span></div></div>';
     }).join('');
-
-    el('prep').innerHTML = '<div class="prep-seq">' + seq + '</div>' + rows;
+    el('prep').innerHTML = '<div class="plain-note" style="margin-bottom:5px">' + seq + '</div>' + rows;
   }
 
-  /* ---------- 工具尺寸表 ---------- */
-  function renderTable(best) {
-    var head = '<div class="tblwrap"><table class="ttbl"><colgroup>' +
-      '<col style="width:12%"><col style="width:6%"><col style="width:15%"><col style="width:13%">' +
-      '<col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:28%">' +
-      '</colgroup><thead><tr><th>工具</th><th>外径</th><th>内孔 / 可捞区间</th><th>适用形态</th>' +
-      '<th>落底</th><th>循环</th><th>最大井斜</th><th>成功率</th><th>备注</th></tr></thead><tbody>';
+  function renderStage4(L) {
+    var m = MODEL.metrics;
+    el('fb-note').textContent = '回写 ' + (FB.ok + FB.bad) + ' 条' + (FB.ok + FB.bad ? ' · 成功 ' + FB.ok + ' / 失败 ' + FB.bad : '') + ' · 人工确认后才进入下一轮训练';
+    el('fb-log').innerHTML = L.best
+      ? '本轮首选 <b>' + L.best.t.name + '</b>（p ' + (L.best.p * 100).toFixed(1) + '%）· 点击按钮把实际结果写回；回写会更新成功率并追加样本重训。'
+      : '本轮没有可回写的首选工具；先走套铣/磨铣工序。';
 
-    var body = TOOLS.map(function (t) {
-      var cid = (t.bore ? t.bore : '—') + ' / ' + (t.basis === 'id' ? '内径 ' : '') + t.dmin + '—' + t.dmax;
-      var isBest = best && best.t.key === t.key;
-      return '<tr' + (isBest ? ' class="best"' : '') + ' title="' + t.note + '">' +
-        '<td class="tn">' + t.name + '</td>' +
-        '<td class="num">' + t.od + '</td>' +
-        '<td class="cid">' + cid + '</td>' +
-        '<td>' + formNames(t) + '</td>' +
-        '<td class="num">' + (t.needBottom ? '是' : '否') + '</td>' +
-        '<td class="num">' + (t.circ ? '是' : '否') + '</td>' +
-        '<td class="num">' + t.maxIncl + '°</td>' +
-        '<td class="num">' + Math.round(t.succ * 100) + '%</td>' +
-        '<td class="note">' + t.note + '</td></tr>';
+    var btns = el('feedback').querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = !L.best;
+
+    var keys = Object.keys(FB.byTool);
+    if (!keys.length) {
+      el('online').innerHTML = '<p class="plain-note">尚无回写。点击「选用成功 / 选用失败」后：该工具成功率按贝叶斯平滑更新，样本追加进训练集并重训，权重与排序同步刷新。</p>' +
+        '<p class="plain-note" style="margin-top:3px">本页合成验证集：学习排序首选 <b>' + (m.top1 * 100).toFixed(1) + '%</b> · NDCG@3 <b>' + m.ndcg.toFixed(3) + '</b> · 验证准确率 <b>' + (m.acc * 100).toFixed(1) + '%</b>。</p>';
+      return;
+    }
+
+    var html = keys.map(function (k) {
+      var b = FB.byTool[k];
+      var t = null;
+      TOOLS.forEach(function (x) { if (x.key === k) t = x; });
+      var now = SUCC[k];
+      var d = (now - b.prev) * 100;
+      return '<div class="online-row"><span class="on">' + (t ? t.name : k) + '</span><span class="ov">n=' + b.n + '</span>' +
+        '<span class="od">' + Math.round(b.prev * 100) + '% → <b>' + Math.round(now * 100) + '%</b>' +
+        (Math.abs(d) < 0.05 ? '（持平）' : '（' + (d > 0 ? '+' : '') + d.toFixed(1) + ' pt）') + '</span></div>';
     }).join('');
 
-    var cap = '<div class="tblcap"><b>读表约定</b>：外部套入式工具必须满足「可捞上限 dmax &lt; 工具内孔 &lt; 工具外径」，' +
-      '否则落物进不去或工具进不了套管；<b>公锥 / 捞矛</b>按落物内径选型，<b>母锥 / 卡瓦筒</b>按落物外径选型。' +
-      '套铣筒与平底磨鞋是解卡/磨铣工序工具，不进入打捞排序。</div>';
-
-    el('tooltable').innerHTML = head + body + '</tbody></table></div>' + cap;
+    var deltaTxt = '—';
+    if (MODEL.deltaW) {
+      var bi = 0, bv = 0;
+      for (var j = 0; j < MODEL.deltaW.length; j++) {
+        if (Math.abs(MODEL.deltaW[j]) > Math.abs(bv)) { bv = MODEL.deltaW[j]; bi = j; }
+      }
+      deltaTxt = FEATS[bi].label + ' ' + (bv >= 0 ? '+' : '') + bv.toFixed(3);
+    }
+    html += '<div class="cmnote" style="margin-top:4px">重训：追加 <b>' + MODEL.nOnline + '</b> 行 · 本轮验证首选 <b>' + (m.top1 * 100).toFixed(1) +
+      '%</b> · 最大权重变化 <b>' + deltaTxt + '</b> · 温度 T ' + MODEL.T.toFixed(2) + '</div>';
+    html += '<div class="cmnote">本页合成验证集：学习排序首选 <b>' + (m.top1 * 100).toFixed(1) + '%</b> · NDCG@3 <b>' + m.ndcg.toFixed(3) + '</b> · 验证准确率 <b>' + (m.acc * 100).toFixed(1) + '%</b>。</div>';
+    el('online').innerHTML = html;
   }
 
-  /* ---------- 教学说明 ---------- */
-  function renderNote(rows, usable, best, branchA, branchB) {
-    var f = FORM_OF(state.form), c = curCasing();
+  function renderModelBox() {
+    var m = MODEL.metrics;
+    el('m-summary').innerHTML = '准确率 <b>' + (m.acc * 100).toFixed(1) + '%</b> · 首选 <b>' + (m.top1 * 100).toFixed(1) +
+      '%</b> · NDCG@3 <b>' + m.ndcg.toFixed(3) + '</b> · T <b>' + MODEL.T.toFixed(2) + '</b>';
+    el('m-badge').textContent = MODEL.nOnline ? '在线更新 ' + MODEL.nOnline : '已训练';
+    el('m-badge').className = 'db ' + (MODEL.nOnline ? 'warn' : 'ok');
+  }
+
+  function renderNote(L) {
+    var f = L.f, c = L.c;
     var txt = '当前落物：<b>' + f.name + '</b>（' + f.desc + '），外径 ' + state.od + ' mm' +
       (f.bore ? (state.fishId > 0 ? '、内径 ' + state.fishId + ' mm' : '、内径未给出') : '、无内孔') +
       '、长 ' + fmt1(state.len) + ' m；套管 <b>' + c.label + '</b>（通径 ' + fmt1(c.drift) + ' mm，工具外径上限 ' + fmt1(c.drift - 12) + ' mm）；' +
-      '井斜 ' + state.incl + '°；' +
-      (state.bottom === true ? '<b>已落底</b>' : (state.bottom === false ? '<b>悬空</b>' : '落底状态<b>未知</b>（默认给两分支）')) +
-      '；' + (state.circ ? '可循环洗井' : '不可循环') + '；' + (state.material === 'ferro' ? '铁磁性' : '非铁磁性') +
-      '；卡阻状态：' + (state.stuck === 'none' ? '未卡阻' : (state.stuck === 'sand' ? '砂卡' : (state.stuck === 'cement' ? '水泥卡' : '落物被埋'))) + '。';
+      '井斜 ' + state.incl + '°；' + (state.bottom === true ? '<b>已落底</b>' : (state.bottom === false ? '<b>悬空</b>' : '落底状态<b>未知</b>（保留两分支）')) +
+      '；' + (state.circ ? '可循环洗井' : '不可循环') + '；' + (state.material === 'ferro' ? '铁磁性' : '非铁磁性') + '；卡阻：' + stuckName(state.stuck) + '。';
 
-    txt += ' 硬约束排除了 <b>' + (rows.length - usable.length) + '</b> 件，剩余 <b>' + usable.length + '</b> 件参与评分。';
-    if (best) {
-      txt += ' 首选 <b>' + best.t.name + '</b>，匹配度 <b>' + best.score.toFixed(2) + '</b>，预计起下钻 <b>' + tripText(best) + '</b>。';
-      txt += state.bottom === null
-        ? ' 进入排序的工具全部通过外径/通径、可捞区间、材质、井斜、循环、咬合长度六类硬约束；落底未知时，需落底工具只作条件推荐（悬空分支不可用）。<b>危险推荐率 0%</b>。'
-        : ' 进入排序的工具全部通过外径/通径、可捞区间、材质、井斜、循环、落底、咬合长度七类硬约束，<b>危险推荐率 0%</b>。';
+    txt += ' 硬约束排除 <b>' + (TOOLS.length - L.usable.length) + '</b> 件，<b>' + L.usable.length + '</b> 件进入学习排序。';
+    if (L.best) {
+      txt += ' 首选 <b>' + L.best.t.name + '</b>，成功概率 <b>' + (L.best.p * 100).toFixed(1) + '%</b>，预计起下钻 <b>' + tripText(L.best) + '</b>。';
+      txt += ' 模型在合成验证集上的首选成功率 <b>' + (MODEL.metrics.top1 * 100).toFixed(1) + '%</b>，NDCG@3 <b>' + MODEL.metrics.ndcg.toFixed(3) + '</b>。';
     } else {
       txt += ' 当前没有通过硬约束的打捞工具——<b>危险推荐率 0%</b>，系统不会为了给答案而推荐物理不可行项。';
     }
-    if (state.bottom === null) {
-      txt += ' 落底分支：' + (branchA ? '<b>' + branchA.t.name + '</b>（' + branchA.score.toFixed(2) + '）' : '无') +
-        '；悬空分支：' + (branchB ? '<b>' + branchB.t.name + '</b>（' + branchB.score.toFixed(2) + '）' : '无可用工具') + '。';
+    if (state.bottom === null && L.branches) {
+      txt += ' 落底分支：' + (L.branches.a ? '<b>' + L.branches.a.t.name + '</b>（' + (L.branches.a.p * 100).toFixed(0) + '%）' : '无') +
+        '；悬空分支：' + (L.branches.b ? '<b>' + L.branches.b.t.name + '</b>（' + (L.branches.b.p * 100).toFixed(0) + '%）' : '无可用工具') + '。';
     }
 
     var tip;
     if (state.stuck === 'buried') {
-      tip = ' 落物被埋时鱼顶不可达，所有直接打捞工具都被排除，应先套铣/磨铣清障——这是“先清障、后打捞”的硬顺序。';
+      tip = ' 落物被埋时鱼顶不可达，所有直接打捞工具都被排除——这是“先清障、后打捞”的硬顺序。';
     } else if (state.casing === 1) {
       tip = ' 5-1/2" 23# 的通径只有 118.6 mm，按单边 6 mm 间隙工具外径上限 106.6 mm；外径 108 mm 的卡瓦打捞筒与篮式捞筒已被排除——校核必须用通径，不能用套管外径。';
     } else if (state.od >= 100) {
@@ -809,7 +1542,84 @@
   }
 
   /* =========================================================
-     控件
+     11. 过程日志 / 阶段 / 运行全流程
+     ========================================================= */
+  var STAGE_LABEL = ['01 描述', '02 约束', '03 排序', '04 方案', '05 闭环'];
+
+  function trace(step, html, cls) {
+    TRACE.push({ step: step, html: html, cls: cls || '' });
+    if (TRACE.length > 9) TRACE.shift();
+    var box = el('trace');
+    box.innerHTML = TRACE.map(function (t) {
+      return '<div><span class="t">' + t.step + '</span><span class="' + t.cls + '">' + t.html + '</span></div>';
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  }
+  function clearTrace() {
+    TRACE = [];
+    el('trace').innerHTML = '<div><span class="t">—</span><span>等待运行：点「▶ 运行全流程」依次看五段，或直接点上方阶段按钮。</span></div>';
+  }
+
+  function setStage(i) {
+    state.stage = i;
+    var panels = document.querySelectorAll('.dstage');
+    for (var p = 0; p < panels.length; p++) panels[p].classList.toggle('on', Number(panels[p].getAttribute('data-stage')) === i);
+    var btns = el('flow').children;
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].classList.toggle('on', b === i);
+      btns[b].classList.toggle('done', b < i);
+      btns[b].setAttribute('aria-selected', b === i ? 'true' : 'false');
+    }
+  }
+
+  function cancelRun() {
+    RUN_TIMERS.forEach(function (t) { clearTimeout(t); });
+    RUN_TIMERS = [];
+    var btn = el('btn-run');
+    if (btn) { btn.disabled = false; btn.textContent = '▶ 运行全流程'; }
+  }
+
+  function runAll() {
+    cancelRun();
+    renderAll();
+    clearTrace();
+    var btn = el('btn-run');
+    btn.disabled = true;
+    btn.textContent = '运行中…';
+    var L = LAST, m = MODEL.metrics;
+    var gcut = TOOLS.length - L.usable.length;
+    var top = L.best;
+    var srcCount = 0;
+    Object.keys(state.src).forEach(function (k2) { if (state.src[k2]) srcCount++; });
+    var steps = [
+      ['01', '读取落物描述 · 已解析 <b>' + srcCount + '/10</b> 字段 · 形态 <b>' + L.f.name + '</b> · 外径 <b>' + state.od + ' mm</b> · 落底 <b>' +
+        (state.bottom === true ? '已落底' : (state.bottom === false ? '悬空' : '未知')) + '</b>', ''],
+      ['02', '硬约束 8 道门：11 件 → <b>' + L.usable.length + ' 件</b>候选 · 排除 <b>' + gcut + '</b> 件 · 危险推荐率 <b>0%</b>', gcut ? 'warn' : 'ok'],
+      ['03', '逻辑回归：640 例（512/128）· 验证准确率 <b>' + (m.acc * 100).toFixed(1) + '%</b> · 首选 <b>' + (m.top1 * 100).toFixed(1) +
+        '%</b> · NDCG@3 <b>' + m.ndcg.toFixed(3) + '</b> · T ' + MODEL.T.toFixed(2), 'ok'],
+      ['04', top ? ('方案：主 <b>' + top.t.name + '</b> p=' + (top.p * 100).toFixed(0) + '% · 备 <b>' + (L.alt ? L.alt.t.name : '无') + '</b> · 工序 ' +
+        (state.stuck === 'none' ? '直接打捞' : '先解卡') + (state.bottom === null ? ' · 先打印确认' : ''))
+        : '方案：0 候选 → 套铣 / 磨铣 / 清屑，再评估打捞', top ? '' : 'bad'],
+      ['05', '价值：选型 <b>2 h → 10 min</b> · 一次成功率 <b>71% → 89%</b>（示范口径）· 当前回写 <b>' + (FB.ok + FB.bad) + '</b> 条', 'ok']
+    ];
+    var delays = [0, 800, 1600, 2400, 3200];
+    steps.forEach(function (s, i) {
+      RUN_TIMERS.push(setTimeout(function () {
+        setStage(i);
+        trace(s[0], s[1], s[2]);
+        if (i === steps.length - 1) {
+          RUN_TIMERS.push(setTimeout(function () {
+            btn.disabled = false;
+            btn.textContent = '▶ 重新运行';
+            trace('✓', '流水线完成：从一段落物描述到主工具 + 备选 + 工序 + 回写通道。', 'ok');
+          }, 700));
+        }
+      }, delays[i]));
+    });
+  }
+
+  /* =========================================================
+     12. 控件
      ========================================================= */
   function setSeg(id, attr, val) {
     var box = el(id);
@@ -830,6 +1640,10 @@
     if (!f.bore) state.fishId = 0;
     if (state.fishId > idMax) state.fishId = idMax;
     if (state.fishId < 0) state.fishId = 0;
+    if (state.incl < 0) state.incl = 0;
+    if (state.incl > 70) state.incl = 70;
+    if (state.len < 0.1) state.len = 0.1;
+    if (state.len > 12) state.len = 12;
 
     el('r-od').max = maxOd;
     el('r-od').value = state.od;
@@ -862,70 +1676,102 @@
     state.od = clamp(f.od, 1, maxOd);
     state.len = clamp(f.len, 0.1, 12);
     state.fishId = f.bore ? clamp(f.fid, 0, Math.max(0, state.od - 6)) : 0;
+    state.src.form = false; state.src.od = false; state.src.fishId = false; state.src.len = false;
     syncControls();
-    render();
+    renderAll();
+  }
+
+  function markManual(keys) {
+    keys.forEach(function (k) { state.src[k] = false; });
+  }
+
+  function refreshAndLog(label, html, cls) {
+    renderAll();
+    trace(label, html, cls);
   }
 
   function init() {
-    el('seg-form').innerHTML = FORMS.map(function (f) {
-      return '<button type="button" data-f="' + f.key + '" title="' + f.desc + '">' + f.name + '</button>';
-    }).join('');
+    var f = FORM_OF(state.form);
 
+    el('seg-form').innerHTML = FORMS.map(function (x) {
+      return '<button type="button" data-f="' + x.key + '" title="' + x.desc + '">' + x.name + '</button>';
+    }).join('');
     el('seg-casing').innerHTML = CASINGS.map(function (c, i) {
-      return '<button type="button" data-v="' + i + '" title="' + c.label.replace(/"/g, '&quot;') + ' 通径 ' + fmt1(c.drift) + ' mm">' + c.label + '</button>';
+      return '<button type="button" data-v="' + i + '" title="' + c.label + ' 通径 ' + fmt1(c.drift) + ' mm">' + c.label + '</button>';
     }).join('');
 
     el('seg-form').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
+      cancelRun();
       applyForm(b.getAttribute('data-f'));
+      trace('参数', '切换落物形态：<b>' + FORM_OF(state.form).name + '</b> · 外径 ' + state.od + ' mm · 长度 ' + fmt1(state.len) + ' m');
     });
 
     el('seg-casing').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
+      cancelRun();
       state.casing = Number(b.getAttribute('data-v'));
+      markManual(['casing', 'od', 'fishId']);
       syncControls();
-      render();
+      refreshAndLog('参数', '切换套管：<b>' + curCasing().label + '</b> · 通径 ' + fmt1(curCasing().drift) + ' mm · 工具外径上限 ' + fmt1(curCasing().drift - 12) + ' mm');
     });
 
     el('seg-bottom').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
+      cancelRun();
       var v = b.getAttribute('data-b');
       state.bottom = v === '1' ? true : (v === '0' ? false : null);
+      markManual(['bottom']);
       syncControls();
-      render();
+      refreshAndLog('参数', '切换落底状态：<b>' + (state.bottom === true ? '已落底' : (state.bottom === false ? '悬空' : '未知')) + '</b>');
     });
 
     el('seg-mat').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
+      cancelRun();
       state.material = b.getAttribute('data-m');
+      markManual(['material']);
       syncControls();
-      render();
+      refreshAndLog('参数', '切换材质：<b>' + (state.material === 'ferro' ? '铁磁性' : '非铁磁性') + '</b>');
     });
 
     el('seg-stuck').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
+      cancelRun();
       state.stuck = b.getAttribute('data-s');
+      markManual(['stuck']);
       syncControls();
-      render();
+      refreshAndLog('参数', '切换卡阻状态：<b>' + stuckName(state.stuck) + '</b>');
     });
 
     el('tog-circ').addEventListener('click', function () {
+      cancelRun();
       state.circ = !state.circ;
+      markManual(['circ']);
       syncControls();
-      render();
+      refreshAndLog('参数', state.circ ? '本井可循环洗井' : '本井不可循环');
     });
 
     function bindSlider(id, key, isFloat) {
-      var r = el(id);
-      r.addEventListener('input', function () {
-        state[key] = isFloat ? Number(r.value) : Math.round(Number(r.value));
+      var timer = null;
+      el(id).addEventListener('input', function () {
+        cancelRun();
+        state[key] = isFloat ? Number(el(id).value) : Math.round(Number(el(id).value));
+        markManual([key]);
         syncControls();
-        render();
+        if (RENDER_TIMER) cancelAnimationFrame(RENDER_TIMER);
+        RENDER_TIMER = requestAnimationFrame(function () { RENDER_TIMER = null; renderAll(); });
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () {
+          trace('参数', '调整 <b>' + ({ od: '落物外径', fishId: '落物内径', len: '长度', incl: '井斜' }[key] || key) + '</b> → ' +
+            (key === 'len' ? fmt1(state.len) + ' m' : (key === 'incl' ? state.incl + '°' : state[key] + ' mm')) +
+            ' · 重新过约束与排序');
+        }, 420);
       });
     }
     bindSlider('r-od', 'od', false);
@@ -933,15 +1779,111 @@
     bindSlider('r-len', 'len', true);
     bindSlider('r-incl', 'incl', false);
 
-    el('btn-reset').addEventListener('click', function () {
-      state = clone(DEFAULTS);
-      syncControls();
-      render();
+    el('btn-parse').addEventListener('click', function () {
+      cancelRun();
+      var res = parseDescription(el('desc-text').value);
+      if (res.count === 0) {
+        el('parse-note').textContent = '没有识别到可用字段：请补充形态、外径、长度、井斜或落底信息。';
+        trace('01', '解析失败：描述里没有识别到形态 / 尺寸 / 井斜 / 落底字段。', 'bad');
+        return;
+      }
+      applyParsed(res, false);
     });
 
+    el('btn-run').addEventListener('click', runAll);
+
+    el('btn-reset').addEventListener('click', function () {
+      cancelRun();
+      state = clone(DEFAULTS);
+      state.src = freshSrc();
+      state.focus = null;
+      state.stage = 0;
+      FB = { ok: 0, bad: 0, byTool: {} };
+      ONLINE_ROWS = [];
+      TOOLS.forEach(function (t) { SUCC[t.key] = t.succ; });
+      MODEL = trainModel(BASE_ROWS, [], { epochs: 420 });
+      var defaultText = '5-1/2" 17# 套管，井斜 18°，起油管时发现 2 根 ∅73 mm 油管断脱，内径 62 mm，长约 2.4 m，落底状态未知，铁磁性，未卡阻，可循环洗井。';
+      el('desc-text').value = defaultText;
+      applyParsed(parseDescription(defaultText), true);
+      syncControls();
+      renderAll();
+      setStage(0);
+      clearTrace();
+      trace('系统', '已重置：模型重新用 640 例合成记录训练 · 回写清空 · 描述恢复默认样本。', 'ok');
+    });
+
+    el('flow').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      cancelRun();
+      setStage(Number(b.getAttribute('data-s')));
+    });
+
+    el('feedback').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b || b.disabled) return;
+      var k = b.getAttribute('data-fb');
+      if (!LAST || !LAST.best) {
+        trace('反馈', '当前没有首选工具，无法回写；先走工序。', 'warn');
+        return;
+      }
+      var t = LAST.best.t;
+      if (!FB.byTool[t.key]) FB.byTool[t.key] = { n: 0, k: 0, prev: SUCC[t.key] };
+      FB.byTool[t.key].n++;
+      if (k === 'ok') { FB.ok++; FB.byTool[t.key].k++; } else { FB.bad++; }
+
+      var priorN = PRIOR_N, priorSucc = t.succ, fb = FB.byTool[t.key];
+      SUCC[t.key] = (priorSucc * priorN + fb.k) / (priorN + fb.n);
+
+      var prevW = MODEL.w.slice();
+      ONLINE_ROWS.push({ x: LAST.best.e.x, y: k === 'ok' ? 1 : 0, toolKey: t.key });
+      MODEL = trainModel(BASE_ROWS, ONLINE_ROWS, { epochs: 420 });
+      MODEL.deltaW = MODEL.w.map(function (v, j) { return v - prevW[j]; });
+
+      renderAll();
+      trace('反馈', '回写 <b>' + t.name + '</b>：' + (k === 'ok' ? '<span class="ok">选用成功</span>' : '<span class="bad">选用失败</span>') +
+        ' · 成功率 ' + Math.round(fb.prev * 100) + '% → <b>' + Math.round(SUCC[t.key] * 100) + '%</b> · 追加 ' + MODEL.nOnline + ' 行重训', k === 'ok' ? 'ok' : 'warn');
+    });
+
+    el('rank').addEventListener('click', function (e) {
+      var th = e.target.closest('th[data-form]');
+      if (th) {
+        cancelRun();
+        applyForm(th.getAttribute('data-form'));
+        trace('矩阵', '按形态列重算：<b>' + FORM_OF(state.form).name + '</b>');
+        return;
+      }
+      var tr = e.target.closest('tr[data-tool]');
+      if (!tr) return;
+      state.focus = tr.getAttribute('data-tool');
+      renderAll();
+      var row = findRow(LAST, state.focus);
+      trace('矩阵', '查看 <b>' + row.t.name + '</b> · ' + (row.e.out ? '<span class="bad">不可用：' + esc(row.e.why) + '</span>' : 'p=' + (row.p * 100).toFixed(1) + '%'));
+    });
+
+    /* 初始：自动解析默认描述，字段来源标成「解析」 */
+    var defaultText = el('desc-text').value;
+    applyParsed(parseDescription(defaultText), true);
     syncControls();
-    render();
+    renderAll();
+    setStage(0);
+    clearTrace();
+    trace('系统', '模型已在本页训练：640 例合成记录（512 训练 / 128 验证）· 验证首选 <b>' + (MODEL.metrics.top1 * 100).toFixed(1) +
+      '%</b> · NDCG@3 <b>' + MODEL.metrics.ndcg.toFixed(3) + '</b>', 'ok');
+    trace('01', '默认样本已解析：10/10 字段 · 落底未知 → 后续保留落底/悬空两分支', 'ok');
   }
+
+  /* 调试探针：不参与页面渲染，便于开发期核对训练结果 */
+  window.__FISH = {
+    model: function () { return MODEL; },
+    data: function () { return DATASET; },
+    val: function () { return VAL_CASES; },
+    base: function () { return BASE_ROWS; },
+    tools: function () { return TOOLS; },
+    last: function () { return LAST; },
+    train: function (epochs, lr) { return trainModel(BASE_ROWS, [], { epochs: epochs || 420, lr: lr || 0.14 }); },
+    retrain: function (rows) { MODEL = trainModel(BASE_ROWS, rows || []); renderAll(); }
+  };
 
   init();
 })();

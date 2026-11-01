@@ -3,65 +3,131 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>示范：落物打捞工具智能选型</title>
+<title>示范：从落物描述到打捞工具组合</title>
 <link rel="stylesheet" href="demo.css">
 <style>
-  .rankrow{display:grid;grid-template-columns:1fr;gap:2px;padding:6px 0;border-bottom:1px solid var(--line)}
-  .rankrow:last-child{border-bottom:0}
-  .rankrow .l1{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:baseline}
-  .rankrow .nm{font-size:12.5px;font-weight:600;color:var(--ink)}
-  .rankrow .sc{font-family:var(--mono);font-size:11.5px;color:var(--jade-d)}
-  .rankrow.out .nm{color:var(--ink-4);font-weight:500}
-  .rankrow.out .sc{color:var(--ink-4)}
-  .rankrow .why{font-size:10.5px;color:var(--ink-4);line-height:1.5}
-  .rankrow .meta{font-size:9.5px;color:var(--ink-4);line-height:1.45;font-family:var(--mono)}
-  .rankrow .warnline{font-size:10px;color:var(--warn);line-height:1.5}
-  .rankrow.out .why{color:var(--bad)}
-  .ordlist{counter-reset:o;font-size:11.5px;color:var(--ink-2);line-height:1.7}
-  .ordlist div{padding:5px 0 5px 22px;position:relative;border-bottom:1px solid var(--line)}
-  .ordlist div:last-child{border-bottom:0}
-  .ordlist div::before{counter-increment:o;content:counter(o);position:absolute;left:0;top:6px;width:15px;height:15px;border-radius:4px;background:var(--jade-l);color:var(--jade-d);font-family:var(--mono);font-size:9px;display:grid;place-items:center}
-  .dctl.sub{padding-top:8px}
-  .seg.sm button{padding:2px 8px;font-size:10.5px}
-  .hint{font-family:var(--mono);font-size:9px;color:var(--ink-4);white-space:nowrap}
-  .dctl input[type=range]{width:112px}
-  .prep-seq{font-size:11.5px;color:var(--ink-2);line-height:1.65;background:var(--card-soft);border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin-bottom:4px}
-  .prep-seq b{color:var(--ink)}
-  .prep-row{display:grid;grid-template-columns:78px minmax(0,1fr) auto;gap:10px;align-items:start;padding:7px 0;border-bottom:1px solid var(--line)}
-  .prep-row:last-child{border-bottom:0}
-  .prep-row .pn{font-size:11.5px;font-weight:600;color:var(--ink)}
-  .prep-row .pd{font-size:10.5px;color:var(--ink-3);line-height:1.55}
-  .prep-row .pd em{font-style:normal;color:var(--ink-4);font-family:var(--mono);font-size:9px}
-  .tblwrap{overflow-x:auto}
-  .ttbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;line-height:1.5}
-  .ttbl th{font-family:var(--mono);font-size:8px;letter-spacing:.05em;color:var(--ink-4);font-weight:400;text-align:left;padding:5px 6px 5px 0;border-bottom:1px solid var(--line-2);white-space:nowrap}
-  .ttbl td{padding:5px 6px 5px 0;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
-  .ttbl tr:last-child td{border-bottom:0}
-  .ttbl tr.best td{background:rgba(36,92,90,.05)}
-  .ttbl .tn{font-weight:600;color:var(--ink)}
-  .ttbl .num{font-family:var(--mono);font-size:9.5px;white-space:nowrap}
-  .ttbl .note{font-size:9px;color:var(--ink-3);line-height:1.45}
-  .ttbl .cid{font-family:var(--mono);font-size:9px}
-  .tblcap{font-size:10.5px;color:var(--ink-4);line-height:1.65;margin-top:7px;border-top:1px solid var(--line);padding-top:6px}
+  .dctl{gap:12px}
+  .dctl.sub{gap:10px}
+  .dctl .seg button{padding:4px 9px}
+  .dctl input[type=range]{width:118px}
+  .dctl .dbtn{padding:5px 10px}
+  .dcv{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:12px;align-items:start}
+  #toolart{height:268px;width:100%}
+  .art-note{font-size:10.5px;color:var(--ink-3);line-height:1.6;margin-top:5px;min-height:34px}
+  .mxwrap{overflow-x:auto}
+  .mx{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9.5px;line-height:1.3}
+  .mx th{font-family:var(--mono);font-size:7.8px;letter-spacing:.03em;color:var(--ink-4);font-weight:400;text-align:left;padding:4px 3px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+  .mx th.cf{cursor:pointer;text-align:center;color:var(--ink-3)}
+  .mx th.cf:hover{color:var(--jade-d)}
+  .mx th.cur{color:var(--jade-d);background:rgba(36,92,90,.07);box-shadow:inset 0 -2px 0 var(--jade)}
+  .mx td{padding:3px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .mx tr.toolrow{cursor:pointer}
+  .mx tr.toolrow:hover td{background:var(--card-soft)}
+  .mx tr.best td{background:rgba(36,92,90,.055)}
+  .mx tr.focus td{box-shadow:inset 0 0 0 1px rgba(36,92,90,.38)}
+  .mx .tn{font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mx .num{font-family:var(--mono);font-size:8.5px;color:var(--ink-3);white-space:nowrap}
+  .mx .cell{padding:2px 1px;text-align:center}
+  .mx .cell i{display:block;height:19px;border-radius:2px;font-style:normal;font-family:var(--mono);font-size:7.5px;line-height:19px;color:var(--ink-2)}
+  .mx .cell.cur i{box-shadow:0 0 0 1.5px var(--jade)}
+  .mx .st{font-size:8.5px;line-height:1.3;white-space:nowrap}
+  .mx .st.ok{color:var(--ok)}
+  .mx .st.no{color:var(--bad)}
+  .mx .st.cond{color:var(--warn)}
+  .tblcap{font-size:9.5px;color:var(--ink-4);line-height:1.55;margin-top:6px;border-top:1px solid var(--line);padding-top:5px}
   .tblcap b{color:var(--ink-3)}
-  @media (min-width:901px){.dgrid.c2b{grid-template-columns:minmax(0,380px) minmax(0,1fr)}}
-  #sch-hint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+  #tool-detail{margin-top:6px;border:1px solid var(--line);border-radius:7px;background:var(--card-soft);padding:6px 9px;font-size:10px;line-height:1.55;color:var(--ink-3);min-height:48px}
+  #tool-detail b{color:var(--ink)}
+  #tool-detail .why{color:var(--bad)}
+  #tool-detail .ok{color:var(--ok)}
+  #desc-text{width:100%;font-family:var(--sans);font-size:10.5px;line-height:1.6;color:var(--ink-2);background:var(--card-soft);border:1px solid var(--line-2);border-radius:6px;padding:7px 9px;resize:vertical;min-height:84px}
+  .parsebar{display:flex;align-items:center;gap:7px;margin:5px 0 6px;flex-wrap:wrap}
+  .fieldrow{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:7px;align-items:baseline;padding:3.5px 0;border-bottom:1px solid var(--line);font-size:10px;line-height:1.45}
+  .fieldrow:last-child{border-bottom:0}
+  .fieldrow .fk{font-family:var(--mono);font-size:8.5px;color:var(--ink-4);white-space:nowrap}
+  .fieldrow .fv{color:var(--ink-2)}
+  .fieldrow .fv b{color:var(--ink)}
+  .fieldrow .fs{font-family:var(--mono);font-size:7.8px;color:var(--ink-4);white-space:nowrap}
+  .fieldrow .fs.parsed{color:var(--ok)}
+  .fieldrow .fs.manual{color:var(--clay-d)}
+  .quality{font-size:10px;line-height:1.6;color:var(--ink-3);border-top:1px solid var(--line);margin-top:6px;padding-top:6px}
+  .quality .bad{color:var(--bad)}
+  .quality .warn{color:var(--warn)}
+  .gaterow{display:grid;grid-template-columns:15px minmax(0,1fr) 54px;gap:6px;align-items:center;padding:3.5px 0;border-bottom:1px solid var(--line);font-size:9.8px;line-height:1.45}
+  .gaterow .gi{font-family:var(--mono);font-size:8px;color:var(--ink-4);text-align:center}
+  .gaterow .gt{color:var(--ink-2);min-width:0}
+  .gaterow .gt b{color:var(--ink)}
+  .gaterow .gt em{font-style:normal;font-family:var(--mono);font-size:8.3px;color:var(--ink-4);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gaterow .gv{font-family:var(--mono);font-size:8.3px;color:var(--ink-4);text-align:right;white-space:nowrap}
+  .gaterow .gv.no{color:var(--bad)}
+  .gaterow .gv.ok{color:var(--ok)}
+  .gbar{grid-column:2/4;height:4px;border-radius:2px;background:var(--paper-3);overflow:hidden;margin-top:1px}
+  .gbar i{display:block;height:100%;background:var(--jade);border-radius:2px}
+  .gbar i.no{background:var(--bad)}
+  .exlist{max-height:220px;overflow:auto}
+  .exrow{display:grid;grid-template-columns:82px minmax(0,1fr);gap:7px;padding:4px 0;border-bottom:1px dashed var(--line);font-size:9.3px;line-height:1.5}
+  .exrow:last-child{border-bottom:0}
+  .exrow .en{font-weight:600;color:var(--ink-3)}
+  .exrow .er{color:var(--bad)}
+  .plan{border:1px solid var(--line-2);border-radius:7px;padding:7px 9px;background:var(--card-soft)}
+  .plan.alt{border-style:dashed;background:transparent;margin-top:6px}
+  .plan-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .plan-h b{font-size:12.5px}
+  .plan-h .mono{margin-left:auto;font-size:10.5px;color:var(--jade-d)}
+  .plan-spec{font-family:var(--mono);font-size:8.2px;color:var(--ink-4);line-height:1.55;margin-top:3px}
+  .plan-why{font-size:10.2px;color:var(--ink-2);line-height:1.6;margin-top:4px}
+  .plan-why b{color:var(--ink)}
+  .riskline{font-size:10px;line-height:1.55;color:var(--ink-3);padding:2px 0}
+  .riskline .bad{color:var(--bad)}
+  .riskline .warn{color:var(--warn)}
+  .ordlist{counter-reset:o;font-size:10.5px;color:var(--ink-2);line-height:1.6}
+  .ordlist div{padding:4px 0 4px 20px;position:relative;border-bottom:1px solid var(--line)}
+  .ordlist div:last-child{border-bottom:0}
+  .ordlist div::before{counter-increment:o;content:counter(o);position:absolute;left:0;top:5px;width:14px;height:14px;border-radius:3px;background:var(--jade-l);color:var(--jade-d);font-family:var(--mono);font-size:8px;display:grid;place-items:center}
+  .ordlist b{color:var(--ink)}
+  .prep-row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:7px;align-items:start;padding:5px 0;border-bottom:1px solid var(--line);font-size:9.5px;line-height:1.5}
+  .prep-row:last-child{border-bottom:0}
+  .prep-row .pn{font-weight:600;color:var(--ink-3)}
+  .prep-row .pd{color:var(--ink-3)}
+  .prep-row .pd em{font-style:normal;font-family:var(--mono);font-size:8px;color:var(--ink-4);display:block}
+  .wrow{display:grid;grid-template-columns:64px minmax(0,1fr) 40px;gap:6px;align-items:center;font-size:9.5px;color:var(--ink-3);padding:2.5px 0}
+  .wrow .track{height:5px;border-radius:3px;background:var(--paper-3);position:relative;overflow:hidden}
+  .wrow .track i{position:absolute;top:0;bottom:0;border-radius:3px}
+  .wrow .val{font-family:var(--mono);font-size:8.5px;text-align:right;color:var(--ink-2)}
+  .wgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2px 14px}
+  .wcell{display:grid;grid-template-columns:58px minmax(0,1fr) 30px;gap:4px;align-items:center;font-size:8.8px;color:var(--ink-3);line-height:1.4;padding:1.5px 0}
+  .wcell .lb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wcell .track{height:5px;border-radius:3px;background:var(--paper-3);position:relative;overflow:hidden}
+  .wcell .track i{position:absolute;top:0;bottom:0;border-radius:3px}
+  .wcell .val{font-family:var(--mono);font-size:8px;text-align:right;color:var(--ink-2)}
+  .cm2{grid-template-columns:54px 1fr 1fr;gap:2px 4px}
+  .cm2 .lb{text-align:right;color:var(--ink-4);font-size:8px;white-space:nowrap}
+  .cm2 i{display:flex;align-items:center;justify-content:center;height:21px;border-radius:2px;font-style:normal;font-family:var(--mono);font-size:8.5px}
+  .cmnote{font-size:9px;color:var(--ink-4);line-height:1.5;margin-top:3px}
+  .fbgrid{display:flex;gap:7px;flex-wrap:wrap;margin-top:5px;font-size:9.5px;color:var(--ink-4)}
+  .online-row{display:grid;grid-template-columns:82px 48px 1fr;gap:6px;font-size:9.3px;line-height:1.5;padding:3px 0;border-bottom:1px dashed var(--line)}
+  .online-row:last-child{border-bottom:0}
+  .online-row .on{font-weight:600;color:var(--ink-3)}
+  .online-row .ov{font-family:var(--mono);font-size:8.5px;color:var(--ink-2)}
+  .online-row .od{color:var(--ink-4)}
+  .plain-note{font-size:9.5px;color:var(--ink-4);line-height:1.55}
+  #curve{height:78px}
+  @media (max-width:900px){.dcv{grid-template-columns:minmax(0,1fr)}#toolart{height:230px}}
 </style>
 </head>
 <body>
 
 <div class="dhead">
   <div>
-    <div class="dkick">TOOL SELECTION · 规则匹配</div>
-    <h1>落物特征 → 打捞工具适用性排序</h1>
-    <p class="lead">先设定落物形态与井况，<b>硬约束</b>把物理上不可能的选项剔掉（工具外径 + 单边间隙、通径、可捞外径/内径区间、材质、井斜、循环、落底、最小咬合长度），
-    再用<b>软评分</b>给剩下的工具排序。左边井筒剖面上会画出首选工具的下入状态；套铣筒与平底磨鞋只作为<b>解卡/磨铣工序工具</b>，不参与打捞排序。</p>
+    <div class="dkick">FISHING TOOL · 描述 → 约束 → 排序 → 方案 → 回写</div>
+    <h1>落物描述 → 可执行打捞工具组合</h1>
+    <p class="lead">这不是一张静态的匹配矩阵。示范把一段现场落物描述、一张工具知识表、640 例历史打捞记录和一条人工回写通道串成五段作业流：先把描述结构化成字段并质控，再用硬约束真排除物理不可行项，然后在可行候选内用本页现场训练的逻辑回归排序，最后组装「主工具 + 备选 + 解卡/磨铣工序 + 风险」并把选用结果回写重训。</p>
   </div>
   <div class="dhead-r">
     <div class="dstat"><div class="k">首选工具</div><div class="v" id="st-tool" style="font-size:12px">—</div></div>
-    <div class="dstat"><div class="k">匹配度</div><div class="v" id="st-score">—</div></div>
-    <div class="dstat"><div class="k">预计起下钻</div><div class="v" id="st-trip">—</div></div>
-    <div class="dstat"><div class="k">硬约束拦截</div><div class="v" id="st-excl">—</div></div>
+    <div class="dstat good"><div class="k">首选成功概率</div><div class="v" id="st-prob">—</div></div>
+    <div class="dstat"><div class="k">验证首选成功率</div><div class="v" id="st-top1">—</div></div>
+    <div class="dstat warn"><div class="k">硬约束排除</div><div class="v" id="st-excl">—</div></div>
   </div>
 </div>
 
@@ -85,53 +151,136 @@
   <div class="grp"><span class="glbl">卡阻状态</span><div class="seg sm" id="seg-stuck">
     <button data-s="none" class="on">未卡阻</button><button data-s="sand">砂卡</button><button data-s="cement">水泥卡</button><button data-s="buried">被埋</button>
   </div></div>
-  <span class="sp"></span>
-  <button class="dbtn reset" id="btn-reset" type="button">↺ 重置</button>
+  <button class="dbtn pri" id="btn-run" type="button">▶ 运行全流程</button>
+  <button class="dbtn" id="btn-reset" type="button">↺ 重置</button>
 </div>
 
-<div class="dgrid c2b">
+<div class="dflow" id="flow" role="tablist" aria-label="落物打捞作业流">
+  <button type="button" class="on" data-s="0" role="tab" aria-selected="true"><span class="n"><i>01</i>INPUT</span><b>描述结构化</b><span>现场文本 → 10 字段</span></button>
+  <button type="button" data-s="1" role="tab" aria-selected="false"><span class="n"><i>02</i>KNOWLEDGE</span><b>图谱与硬约束</b><span>8 道门 · 真排除</span></button>
+  <button type="button" data-s="2" role="tab" aria-selected="false"><span class="n"><i>03</i>MODEL</span><b>学习排序</b><span>640 例逻辑回归</span></button>
+  <button type="button" data-s="3" role="tab" aria-selected="false"><span class="n"><i>04</i>PLAN</span><b>方案组装</b><span>主 + 备 + 工序</span></button>
+  <button type="button" data-s="4" role="tab" aria-selected="false"><span class="n"><i>05</i>LOOP</span><b>反馈与价值</b><span>回写 → 重训</span></button>
+</div>
+
+<div class="dgrid c2">
   <div class="dcol">
-    <div class="dfig">
-      <div class="dfig-h"><b>井筒剖面 · 下入状态</b><span id="sch-hint">落物 73 mm · 2.4 m</span></div>
-      <svg id="schematic" viewBox="0 0 380 440" role="img" aria-label="井筒与落物打捞示意"></svg>
-      <div class="dfig-foot">
-        <span><i style="background:#d3c9b6"></i>套管</span>
-        <span><i style="background:#a64b3c"></i>落物</span>
-        <span><i style="background:#1d4e50"></i>推荐工具</span>
-        <span>井斜按 0.45 比例绘制 · 示意，非等比例</span>
+    <div class="dcv">
+      <div class="dfig">
+        <div class="dfig-h"><b>井筒剖面 · 下入状态</b><span id="sch-hint">—</span></div>
+        <svg id="schematic" viewBox="0 0 380 440" role="img" aria-label="井筒与落物打捞示意"></svg>
+        <div class="dfig-foot">
+          <span><i style="background:#d3c9b6"></i>套管</span>
+          <span><i style="background:#a64b3c"></i>落物</span>
+          <span><i style="background:#1d4e50"></i>推荐工具</span>
+          <span>井斜按 0.45 比例绘制 · 示意</span>
+        </div>
+      </div>
+      <div class="dfig">
+        <div class="dfig-h"><b>工具构造示意</b><span id="art-hint">—</span></div>
+        <svg id="toolart" viewBox="0 0 210 172" role="img" aria-label="工具构造"></svg>
+        <p class="art-note" id="art-note">—</p>
+        <div class="dfig-foot"><span>点击左下方矩阵行可切换查看；灰字为被硬约束排除的工具。</span></div>
       </div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>首选工具构造示意</b><span id="art-hint">—</span></div>
-      <svg id="toolart" viewBox="0 0 210 172" role="img" aria-label="工具构造"></svg>
-      <p style="font-size:11px;color:var(--ink-3);line-height:1.65;margin-top:6px" id="art-note">—</p>
+
+    <div class="dfig" style="margin-top:12px">
+      <div class="dfig-h"><b>工具矩阵 · 知识表 × 当前落物</b><span id="rank-hint">—</span></div>
+      <div id="rank" class="mxwrap"></div>
+      <div class="tblcap"><b>读表约定</b>：外部套入式工具必须满足「可捞上限 dmax &lt; 工具内孔 &lt; 工具外径」；<b>公锥 / 捞矛</b>按落物内径选型，<b>母锥 / 卡瓦筒</b>按落物外径选型。矩阵色深 = 形态适用度，<b>p</b> = 学习排序给出的成功概率，仅对通过硬约束的候选计算；套铣筒与平底磨鞋是解卡/磨铣工序工具，不参与打捞排序。</div>
+      <div id="tool-detail">—</div>
     </div>
   </div>
 
   <div class="dcol">
-    <div class="dfig">
-      <div class="dfig-h"><b>打捞工具适用性排序</b><span>灰字 = 被硬约束排除 · 悬停看规格与备注</span></div>
-      <div id="rank"></div>
+    <div class="dfig dstage on" data-stage="0">
+      <div class="dfig-h"><b>01 · 落物描述结构化</b><span>现场文本 → 10 个字段</span></div>
+      <p class="dstage-lede">现场先给一段描述。解析器把它拆成<b>形态、外径、内径、长度、井斜、落底三态、材质、卡阻、循环、套管</b>，然后做质控：哪些字段缺失、哪些只能沿用当前值、哪些不确定性（落底未知、内径未给出）会直接改变候选集合。</p>
+      <textarea id="desc-text" spellcheck="false">5-1/2" 17# 套管，井斜 18°，起油管时发现 2 根 ∅73 mm 油管断脱，内径 62 mm，长约 2.4 m，落底状态未知，铁磁性，未卡阻，可循环洗井。</textarea>
+      <div class="parsebar">
+        <button class="dbtn pri" id="btn-parse" type="button">解析描述</button>
+        <span class="dfeed-note" id="parse-note">等待解析：也可以直接拖动上方参数，字段来源会标成「手工」。</span>
+      </div>
+      <div id="fields"></div>
+      <div class="quality" id="quality">—</div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>首选工具的分项得分</b><span>加权求和 = 匹配度</span></div>
+
+    <div class="dfig dstage" data-stage="1">
+      <div class="dfig-h"><b>02 · 工具知识图谱与硬约束</b><span>先排除，再排序</span></div>
+      <p class="dstage-lede">工具知识表不是一张打分表，而是一组<b>可判定的物理条件</b>。这里按顺序过 8 道门：鱼顶可达 → 通径/单边间隙 → 可捞区间 → 材质 → 井斜 → 循环 → 落底 → 咬合长度。任何一道不通过就直接标「不可用」，<b>不进入学习排序，也不靠扣分蒙混</b>。</p>
+      <p class="plain-note" style="margin-bottom:4px">图谱：5 类落物 × 11 件打捞工具 × 2 件工序工具；边 = 形态适用度 / 可捞区间 / 工况条件。</p>
+      <div id="gates"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>被排除的工具</b><span>原因全量列出</span></div>
+      <div id="excluded" class="exlist"></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="2">
+      <div class="dfig-h"><b>03 · 学习排序 · 640 例逻辑回归</b><span>本页现场训练 · 合成数据</span></div>
+      <p class="dstage-lede">用 640 例合成记录（512 训练 / 128 验证）训练逻辑回归；6 维特征标准化、标签平滑 0.03、温度缩放。模型只给<b>已通过硬约束的候选</b>打分，不能把被排除的工具拉回推荐。</p>
+      <div class="dval" style="margin-bottom:7px">
+        <div><div class="k">训练 / 验证</div><div class="v" id="m-n">—</div><div class="s">训练 / 验证例数</div></div>
+        <div><div class="k">验证准确率</div><div class="v ok" id="m-acc">—</div><div class="s">单候选 · 阈值 0.50</div></div>
+        <div><div class="k">首选成功率</div><div class="v" id="m-top1">—</div><div class="s">验证集 · 每组取 Top-1</div></div>
+        <div><div class="k">NDCG@3</div><div class="v" id="m-ndcg">—</div><div class="s">组内排序质量</div></div>
+      </div>
+      <div class="dfig-h"><b>训练损失</b><span>交叉熵 · 每 10 轮</span></div>
+      <svg class="dcurve" id="curve" viewBox="0 0 320 78" role="img" aria-label="训练损失曲线"></svg>
+      <div class="dfig-h" style="margin-top:7px"><b>验证 2×2</b><span>阈值 0.50 · Brier / T</span></div>
+      <div class="dcm cm2" id="cm"></div>
+      <div class="cmnote" id="cm-note">—</div>
+      <div class="dfig-h" style="margin-top:8px"><b>标准化特征权重</b><span>正 = 推高成功概率</span></div>
+      <div id="weights"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>当前候选的成功概率</b><span>仅硬约束通过的候选</span></div>
+      <div id="probs"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>首选的特征贡献</b><span>w × 标准化特征</span></div>
       <div id="parts"></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>建议作业顺序</b><span>按工具类型给动作，不套统一压重</span></div>
+
+    <div class="dfig dstage" data-stage="3">
+      <div class="dfig-h"><b>04 · 方案组装</b><span>主工具 + 备选 + 解卡/磨铣</span></div>
+      <p class="dstage-lede">排序第一不等于「只带一件工具」。方案要给出<b>主工具、备选、工具串、作业顺序和风险前提</b>：落底未知先打印确认并保留两分支；砂卡/水泥卡追加震击器 + 安全接头；没有可行打捞工具时，转套铣/磨铣工序，而不是硬推一个物理上不可行的选项。</p>
+      <div id="plan-main">—</div>
+      <div id="risks" style="margin-top:7px"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>作业顺序</b><span>按工具类型与卡阻状态</span></div>
       <div class="ordlist" id="orders"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>解卡 / 磨铣工序</b><span>不参与打捞排序</span></div>
+      <div id="prep"></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="4">
+      <div class="dfig-h"><b>05 · 反馈与价值</b><span>回写 → 在线更新 → 重训</span></div>
+      <p class="dstage-lede">模型的最后一个输入是<b>现场结果</b>。工程师确认「这次选用成功/失败」后，工具成功率按贝叶斯平滑更新，样本追加进训练集并重训；下一轮的权重会变，日志里能看见变化。</p>
+      <div class="dval" style="margin-bottom:7px">
+        <div><div class="k">历史记录</div><div class="v">640 例</div><div class="s">512 训练 / 128 验证</div></div>
+        <div><div class="k">选型耗时</div><div class="v">2 h → 10 min</div><div class="s">示范口径</div></div>
+        <div><div class="k">一次成功率</div><div class="v ok">71% → 89%</div><div class="s">经验选型 → 系统选型 · 示范</div></div>
+        <div><div class="k">错配 / 空跑</div><div class="v">2.1 → 0.6 次</div><div class="s">每 10 井次 · 示范口径</div></div>
+      </div>
+      <p class="plain-note">口径说明：640 例是<b>合成示范历史记录</b>；71% → 89% 是「现场经验选型 → 系统选型」的示范口径，不是本页合成验证集的实测。现场落地需用真实打捞记录重新训练与验收。</p>
+      <div class="dfeed" id="feedback" style="margin-top:7px">
+        <button class="dbtn" type="button" data-fb="ok">✓ 选用成功</button>
+        <button class="dbtn" type="button" data-fb="bad">✗ 选用失败</button>
+        <span class="dfeed-note" id="fb-note">回写 0 条 · 人工确认后才进入下一轮训练</span>
+      </div>
+      <div class="fbgrid" id="fb-log">—</div>
+      <div class="dfig-h" style="margin-top:8px"><b>在线更新</b><span>成功率平滑 + 追加样本重训</span></div>
+      <div id="online">—</div>
+    </div>
+
+    <div class="dmodel">
+      <div class="dmodel-h"><b>模型档案</b><span class="db plain" id="m-badge">已训练</span></div>
+      <div class="dmodel-row"><span class="k">任务</span><span class="v">可行候选内的成功概率排序（learning to rank）</span></div>
+      <div class="dmodel-row"><span class="k">数据</span><span class="v">640 例合成历史记录 · 512/128 · 6 维特征</span></div>
+      <div class="dmodel-row"><span class="k">模型</span><span class="v">逻辑回归 + 标准化 + 标签平滑 0.03 + 温度缩放</span></div>
+      <div class="dmodel-row"><span class="k">验证</span><span class="v" id="m-summary">—</span></div>
+      <div class="dmodel-row"><span class="k">约束与边界</span><span class="v">硬约束先过滤，排除项不进入模型；p &lt; 0.65 或与备选差距 &lt; 0.08 → 打印确认 / 人工复核</span></div>
+    </div>
+
+    <div class="dfig" style="padding-top:8px">
+      <div class="dfig-h"><b>过程日志</b><span>输入 → 处理 → 输出</span></div>
+      <div class="dtrace" id="trace"></div>
     </div>
   </div>
-</div>
-
-<div class="dfig" style="margin-top:12px">
-  <div class="dfig-h"><b>解卡 / 套铣准备（工序工具，不参与打捞评分）</b><span>只按卡阻状态推荐</span></div>
-  <div id="prep"></div>
-</div>
-
-<div class="dfig" style="margin-top:12px">
-  <div class="dfig-h"><b>工具尺寸表 · 知识表原文</b><span>外径 / 内孔 / 可捞区间 / 工况</span></div>
-  <div id="tooltable"></div>
 </div>
 
 <p class="dnote" id="note"></p>

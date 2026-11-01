@@ -3,123 +3,239 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>示范：管道泄漏智能检测（负压波 + 流量平衡）</title>
+<title>示范：从双站压力到泄漏处置（负压波 + 事件分类 + 定位）</title>
 <link rel="stylesheet" href="demo.css">
 <style>
-  #pres{display:block;width:100%;height:288px;border:1px solid var(--line);border-radius:8px;background:#fff}
-  #dt{display:block;width:100%;height:142px;border:1px solid var(--line);border-radius:8px;background:#fff}
-  #flow{display:block;width:100%;height:172px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #pres{display:block;width:100%;height:270px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #dt{display:block;width:100%;height:134px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #flowbal{display:block;width:100%;height:158px;border:1px solid var(--line);border-radius:8px;background:#fff}
   #pipe{display:block;width:100%;height:auto}
-  .vrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid var(--line)}
+  .vrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:3.5px 0;border-bottom:1px solid var(--line)}
   .vrow:last-child{border-bottom:0}
-  .vrow .vk{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--ink-4);white-space:nowrap}
-  .vrow .vv{font-family:var(--mono);font-size:11.5px;color:var(--ink);text-align:right}
-  .vrow .vv small{font-family:var(--sans);font-size:9.5px;color:var(--ink-4);margin-left:3px}
+  .vrow .vk{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;color:var(--ink-4);white-space:nowrap}
+  .vrow .vv{font-family:var(--mono);font-size:11px;color:var(--ink);text-align:right}
+  .vrow .vv small{font-family:var(--sans);font-size:9px;color:var(--ink-4);margin-left:2px}
   .vrow .vv.ok{color:var(--ok)}.vrow .vv.warn{color:var(--warn)}.vrow .vv.bad{color:var(--bad)}
-  .vform{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);background:var(--card-soft);
-    border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin:6px 0 4px;line-height:1.6}
-  .hit{display:grid;grid-template-columns:auto 1fr;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);
-    font-size:11px;line-height:1.55}
+  .vform{font-family:var(--mono);font-size:10px;color:var(--ink-2);background:var(--card-soft);
+    border:1px solid var(--line);border-radius:6px;padding:5px 7px;margin:5px 0 4px;line-height:1.65;word-break:break-word}
+  .hit{display:grid;grid-template-columns:auto 1fr;gap:7px;padding:4px 0;border-bottom:1px solid var(--line);
+    font-size:10.5px;line-height:1.55}
   .hit:last-child{border-bottom:0}
-  .hit .ic{font-family:var(--mono);font-size:11px;padding-top:1px}
-  .hit .ic.y{color:var(--ok)}.hit .ic.n{color:var(--ink-4)}.hit .ic.b{color:var(--bad)}
+  .hit .ic{font-family:var(--mono);font-size:10.5px;padding-top:1px}
+  .hit .ic.y{color:var(--ok)}.hit .ic.n{color:var(--ink-4)}.hit .ic.b{color:var(--bad)}.hit .ic.w{color:var(--warn)}
   .hit .tx{color:var(--ink-3)}
   .hit .tx b{color:var(--ink)}
-  .ev{display:grid;grid-template-columns:auto 1fr;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:11.5px}
+  .ev{display:grid;grid-template-columns:auto 1fr;gap:7px;padding:5px 0;border-bottom:1px solid var(--line);font-size:10.5px}
   .ev:last-child{border-bottom:0}
-  .ev .t{font-family:var(--mono);font-size:10px;color:var(--ink-4);padding-top:2px;white-space:nowrap}
-  .ev .d{color:var(--ink-3);font-size:10.5px;line-height:1.55;margin-top:2px}
+  .ev .t{font-family:var(--mono);font-size:9px;color:var(--ink-4);padding-top:2px;white-space:nowrap}
+  .ev .d{color:var(--ink-3);font-size:9.5px;line-height:1.5;margin-top:1px}
   .ev .d b{color:var(--ink)}
+  .feat{display:grid;grid-template-columns:84px minmax(0,1fr) 62px;gap:6px;align-items:center;
+    font-size:10px;color:var(--ink-3);padding:2.5px 0}
+  .feat .lb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .feat .track{height:6px;border-radius:3px;background:var(--paper-3);position:relative;overflow:hidden}
+  .feat .track i{position:absolute;top:0;bottom:0}
+  .feat .val{font-family:var(--mono);font-size:9px;text-align:right;color:var(--ink-2);white-space:nowrap}
+  .cand{display:grid;grid-template-columns:52px 1fr auto;gap:6px;font-size:10px;padding:3.5px 0;border-bottom:1px solid var(--line);align-items:baseline}
+  .cand:last-child{border-bottom:0}
+  .cand .t{font-family:var(--mono);font-size:9px;color:var(--ink-4)}
+  .cand .d{color:var(--ink-3);line-height:1.45}
+  .cand .d b{color:var(--ink)}
+  .cand .x{font-family:var(--mono);font-size:8.5px;white-space:nowrap}
+  .mini{font-family:var(--mono);font-size:8.5px;color:var(--ink-4)}
+  .kv{font-family:var(--mono);font-size:10px;color:var(--ink-2)}
+  .valtab td{font-family:var(--mono);font-size:10.5px}
+  .valtab .up{color:var(--ok);font-weight:600}
+  .valtab .k2{font-family:var(--sans);color:var(--ink-2)}
 </style>
 </head>
 <body>
 
 <div class="dhead">
   <div>
-    <div class="dkick">PIPELINE LEAK · 负压波 + 流量平衡</div>
-    <h1>双站压力突变 → 泄漏定位与误报抑制</h1>
-    <p class="lead">120 km 输油管道，首站与末站各一台压力变送器。左上是负压波传播示意：泄漏瞬间的压力突降从漏点向两端传播，
-    两端检测到突变的<b>时间差</b>决定漏点位置 x = (L + v·Δt) / 2。左中是 24 h 历史库（10 s 存储）上的双站压力与突变指标；
-    报警后回捞 1 s 原始数据做精分析。右侧是定位结果、Δt 放大、流量平衡交叉验证与检测日志。</p>
+    <div class="dkick">NEGATIVE PRESSURE WAVE · 采集 → 检测 → 分类 → 定位派车 → 回写</div>
+    <h1>从双站压力到泄漏处置：负压波检测 + 事件分类 + 定位</h1>
+    <p class="lead">120 km 输油管段的两站之间没有任何测点，能用的只有两站压力、流量与工况台账。这条流水线把这件事拆成五段：先把 1 s 原始流与 10 s 历史库质控干净；再用滑动窗均值差粗筛突变、报警后回捞 1 s 数据精分析；把每个候选事件压成 8 个物理特征，用本页现场训练的 softmax 分出<b>真泄漏 / 调阀 / 启泵 / 噪声</b>；只有概率、流量平衡与工况记录三道门都过，才输出位置并派车；人工确认结果回写，进入下一轮训练。</p>
   </div>
   <div class="dhead-r">
-    <div class="dstat"><div class="k">定位结果</div><div class="v" id="st-loc">—</div></div>
+    <div class="dstat"><div class="k">事件判定</div><div class="v" id="st-verdict" style="font-size:11.5px">—</div></div>
+    <div class="dstat good"><div class="k">分类置信度</div><div class="v" id="st-conf">—</div></div>
+    <div class="dstat"><div class="k">全链路延迟</div><div class="v" id="st-delay">—</div></div>
     <div class="dstat"><div class="k">定位误差</div><div class="v" id="st-err">—</div></div>
-    <div class="dstat"><div class="k">检测延迟</div><div class="v" id="st-delay">—</div></div>
-    <div class="dstat warn"><div class="k">误报次数</div><div class="v" id="st-fp">—</div></div>
   </div>
 </div>
 
 <div class="dctl">
-  <div class="grp"><span class="glbl">场景</span><div class="seg" id="seg-scen"></div></div>
-  <div class="ctl-s"><label for="r-pos">泄漏位置</label><input type="range" id="r-pos" min="0" max="100" step="1" value="62"><output id="o-pos">74.4 km</output></div>
-  <div class="ctl-s"><label for="r-leak">漏量</label><input type="range" id="r-leak" min="0.5" max="5" step="0.1" value="2"><output id="o-leak">2.0 %</output></div>
-  <div class="ctl-s"><label>噪声</label><input type="range" id="r-noise" min="0.3" max="3" step="0.1" value="1"><output id="o-noise">1.0×</output></div>
-  <div class="ctl-s"><label>触发阈值</label><input type="range" id="r-thr" min="0.015" max="0.09" step="0.005" value="0.045"><output id="o-thr">0.045 MPa</output></div>
-  <label class="tog on" id="tog-aware"><i></i>工况感知</label>
-  <label class="tog on" id="tog-flow"><i></i>流量平衡交叉验证</label>
+  <div class="grp"><span class="glbl">真实场景</span><div class="seg" id="seg-scen"></div></div>
+  <div class="ctl-s"><label for="r-pos">泄漏位置</label><input type="range" id="r-pos" min="4" max="96" step="1" value="62"><output id="o-pos">74.4 km</output></div>
+  <div class="ctl-s"><label for="r-leak">漏量</label><input type="range" id="r-leak" min="0.4" max="5" step="0.1" value="2"><output id="o-leak">2.0 %</output></div>
+  <div class="ctl-s"><label for="r-noise">噪声</label><input type="range" id="r-noise" min="0.4" max="3" step="0.1" value="1"><output id="o-noise">1.0×</output></div>
   <span class="sp"></span>
-  <button class="dbtn pri" id="play">▶ 播放 24 h</button>
-  <button class="dbtn" id="btn-reset">重置</button>
+  <button class="dbtn pri" id="btn-run" type="button">▶ 运行全流程</button>
+  <button class="dbtn" id="btn-reset" type="button">重置</button>
+</div>
+
+<div class="dflow" id="flow" role="tablist" aria-label="管道泄漏 AI 作业流">
+  <button type="button" class="on" data-s="0" role="tab" aria-selected="true"><span class="n"><i>01</i>INPUT</span><b>采集与质控</b><span>双站压力 / 流量 / 工况</span></button>
+  <button type="button" data-s="1" role="tab" aria-selected="false"><span class="n"><i>02</i>DETECT</span><b>突变检测</b><span>粗筛 + 回捞精分析</span></button>
+  <button type="button" data-s="2" role="tab" aria-selected="false"><span class="n"><i>03</i>CLASSIFY</span><b>特征与事件分类</b><span>4 类 softmax</span></button>
+  <button type="button" data-s="3" role="tab" aria-selected="false"><span class="n"><i>04</i>DECIDE</span><b>定位与决策</b><span>派车 / 复核 / 抑制</span></button>
+  <button type="button" data-s="4" role="tab" aria-selected="false"><span class="n"><i>05</i>LOOP</span><b>闭环与价值</b><span>回写与指标</span></button>
 </div>
 
 <div class="dgrid c2">
   <div class="dcol">
     <div class="dfig">
-      <div class="dfig-h"><b>管线纵剖面 · 负压波传播</b><span id="pipe-hint">时间压缩 ≈ 220×</span></div>
-      <svg id="pipe" viewBox="0 0 700 180" role="img" aria-label="管道纵剖面与负压波传播示意"></svg>
+      <div class="dfig-h"><b>管线纵剖面 · 负压波传播与定位</b><span id="pipe-hint">时间压缩 ≈ 220×</span></div>
+      <svg id="pipe" viewBox="0 0 700 180" role="img" aria-label="管道纵剖面、负压波传播与定位结果"></svg>
       <div class="dfig-foot">
         <span><i style="background:#1d4e50"></i>首站侧波前</span>
         <span><i style="background:#355c74"></i>末站侧波前</span>
-        <span><i style="background:#a64b3c"></i>泄漏点</span>
-        <span>波前到达时刻之差 Δt 决定定位</span>
+        <span><i style="background:#a64b3c"></i>真实漏点</span>
+        <span><i style="background:#245c5a"></i>算法定位</span>
+        <span><i style="background:rgba(36,92,90,.18);height:8px"></i>±1% 管长区间</span>
       </div>
     </div>
+
     <div class="dfig">
-      <div class="dfig-h"><b>双站压力与突变指标 · 24 h</b><span id="time-hint">t = 24:00 · 全天</span></div>
-      <canvas id="pres" width="1400" height="576"></canvas>
+      <div class="dfig-h"><b>双站压力与突变指标 · 24 h 历史库（10 s）</b><span id="time-hint">t = 24:00</span></div>
+      <canvas id="pres" width="1400" height="540"></canvas>
       <div class="dfig-foot">
         <span><i style="background:#1d4e50"></i>首站出站压力</span>
         <span><i style="background:#355c74"></i>末站进站压力</span>
         <span><i style="background:#a9742c"></i>突变指标 S</span>
-        <span><i class="dash"></i>触发阈值</span>
-        <span><i style="background:#f5e6e1;height:8px"></i>泄漏区段</span>
-        <span><i style="background:#f4e8d4;height:8px"></i>工况操作时刻</span>
+        <span><i class="dash"></i>检测阈值</span>
+        <span><i style="background:#a64b3c;height:8px"></i>泄漏区段</span>
+        <span><i style="background:#f4e8d4;height:8px"></i>工况操作</span>
       </div>
     </div>
+
+    <div class="dfig">
+      <div class="dfig-h"><b>Δt 放大 · 回捞的 1 s 原始数据</b><span id="dt-hint">—</span></div>
+      <canvas id="dt" width="700" height="268"></canvas>
+      <div class="dfig-foot">
+        <span><i style="background:#1d4e50"></i>首站 δp</span>
+        <span><i style="background:#355c74"></i>末站 δp</span>
+        <span>纵轴 = 压力 − 基线；t1 / t2 由 S² 加权质心估计</span>
+      </div>
+    </div>
+
     <div class="dfig">
       <div class="dfig-h"><b>流量平衡 · 进出站流量差累计</b><span id="flow-hint">—</span></div>
-      <canvas id="flow" width="700" height="344"></canvas>
+      <canvas id="flowbal" width="700" height="316"></canvas>
       <div class="dfig-foot">
-        <span><i style="background:#1d4e50"></i>累计流量差 ΔV</span>
+        <span><i style="background:#123b3a"></i>累计流量差 ΔV</span>
         <span><i class="dash"></i>持续偏离判据 12 m³</span>
         <span>真泄漏持续偏离、工况扰动短时脉冲后回落</span>
       </div>
     </div>
+
     <p class="dnote" id="note"></p>
   </div>
 
   <div class="dcol">
-    <div class="dfig">
-      <div class="dfig-h"><b>判定与定位</b><span id="vd-hint">—</span></div>
-      <div id="verdict"></div>
+    <div class="dfig dstage on" data-stage="0">
+      <div class="dfig-h"><b>01 · 采集与质量控制</b><span>数据能不能进模型</span></div>
+      <p class="dstage-lede">两站各一台压力变送器与流量计：1 s 原始流进 10 s 历史库，工况台账单独一路。质控先过三件事——<b>缺测补点、两站对时、变送器零漂</b>；不合格的时段既不进检测，也不进训练集。</p>
+      <div class="vrow"><span class="vk">压力数据</span><span class="vv">1 s 原始流 · 10 s 库 <b id="q-his">8640</b> 点/站</span></div>
+      <div class="vrow"><span class="vk">流量数据</span><span class="vv">进出站 1 s · <b id="q-q0">1600</b> m³/h</span></div>
+      <div class="vrow"><span class="vk">工况记录</span><span class="vv" id="q-op">—</span></div>
+      <div class="vrow"><span class="vk">采样完整性</span><span class="vv" id="q-miss">—</span></div>
+      <div class="vrow"><span class="vk">两站时钟</span><span class="vv" id="q-skew">—</span></div>
+      <div class="vrow"><span class="vk">变送器零漂</span><span class="vv" id="q-drift">—</span></div>
+      <div class="vrow"><span class="vk">信噪比</span><span class="vv" id="q-snr">—</span></div>
+      <div class="vrow"><span class="vk">质控结论</span><span class="vv" id="q-gate">—</span></div>
+      <div class="ctl-s" style="margin-top:8px"><label for="r-skew">两站时钟漂移</label><input type="range" id="r-skew" min="-0.6" max="0.6" step="0.05" value="0"><output id="o-skew">0.00 s</output></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:5px">
+        <label class="tog on" id="tog-aware"><i></i>工况记录接入</label>
+        <label class="tog on" id="tog-flow"><i></i>流量平衡接入</label>
+      </div>
+      <div class="dfig-foot" style="margin-top:7px"><span>时钟差 0.3 s = 165 m 位置偏差：这是定位误差的下限，与算法无关。</span></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>Δt 放大 · 1 s 原始数据</b><span id="dt-hint">—</span></div>
-      <canvas id="dt" width="700" height="284"></canvas>
-      <div class="dfig-foot">
-        <span><i style="background:#1d4e50"></i>首站</span>
-        <span><i style="background:#355c74"></i>末站</span>
-        <span>纵轴为压力相对基线的偏移</span>
+
+    <div class="dfig dstage" data-stage="1">
+      <div class="dfig-h"><b>02 · 突变检测：粗筛 + 回捞</b><span>10 s 全天扫 · 1 s 精分析</span></div>
+      <p class="dstage-lede">在 10 s 历史库上逐点算 <b>S = 前 60 s 均值 − 后 60 s 均值</b>，越过阈值并连续 3 点即记为候选；候选再回捞前后各 10 min 的 1 s 原始流，用 8 s 窗与 S² 加权质心把突变时刻估到 0.3 s 量级。</p>
+      <div class="ctl-s" style="margin:2px 0 6px"><label for="r-thr">检测阈值</label><input type="range" id="r-thr" min="0.025" max="0.1" step="0.005" value="0.045"><output id="o-thr">0.045</output></div>
+      <div class="vrow"><span class="vk">粗筛参数</span><span class="vv">W = 60 s · 持续 3 点 · 10 s 库</span></div>
+      <div class="vrow"><span class="vk">候选事件</span><span class="vv" id="d-cand">—</span></div>
+      <div class="vrow"><span class="vk">回捞窗口</span><span class="vv" id="d-win">—</span></div>
+      <div class="vrow"><span class="vk">精分析</span><span class="vv" id="d-fine">—</span></div>
+      <div class="vrow"><span class="vk">t1 / t2</span><span class="vv" id="d-t">—</span></div>
+      <div class="vrow"><span class="vk">Δt 分辨率</span><span class="vv" id="d-res">—</span></div>
+      <div class="dfig-h" style="margin-top:8px"><b>候选事件</b><span>按时间排序 · 前 4 条</span></div>
+      <div id="cands"></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="2">
+      <div class="dfig-h"><b>03 · 特征与事件分类</b><span>本页现场训练 · 合成事件</span></div>
+      <p class="dstage-lede">每个候选被压成 8 个量：<b>Δt、压降幅值、上下游衰减不对称、累计失衡、失衡斜率、偏离半衰、工况标签、双端标志</b>。1280 例合成事件训练 4 类 softmax，留出 20% 验证，标签平滑抑制过度自信，温度缩放校准概率。</p>
+      <div class="dval">
+        <div><div class="k">训练 / 验证</div><div class="v" id="m-n">—</div><div class="s">4 类合成事件</div></div>
+        <div><div class="k">验证准确率</div><div class="v ok" id="m-acc">—</div><div class="s">留出 20% 不参与训练</div></div>
+        <div><div class="k">校准 ECE</div><div class="v" id="m-ece">—</div><div class="s" id="m-ece-s">温度缩放后</div></div>
+        <div><div class="k">自动档覆盖</div><div class="v" id="m-cover">—</div><div class="s">p ≥ 0.62 的占比</div></div>
+      </div>
+      <div class="dfig-h" style="margin-top:8px"><b>训练损失</b><span>交叉熵 · 每 10 轮</span></div>
+      <svg class="dcurve" id="curve" viewBox="0 0 320 74" role="img" aria-label="训练损失曲线"></svg>
+      <div class="dfig-h" style="margin-top:6px"><b>验证混淆矩阵</b><span>行 = 真实 · 列 = 预测</span></div>
+      <div class="dcm" id="cm"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>当前事件 · 四类概率</b><span id="cls-hint">—</span></div>
+      <div id="probs"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>特征值与贡献</b><span>条 = 权重 × 标准化特征</span></div>
+      <div id="feats"></div>
+      <div class="dfig-foot" style="margin-top:5px"><span>合成事件由物理模型 + 估计误差生成；现场上线须换成人工确认过的真实事件。</span></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="3">
+      <div class="dfig-h"><b>04 · 定位与决策</b><span>概率如何变成派车单</span></div>
+      <p class="dstage-lede">先过物理门限（|Δt| ≤ L/v），再过流量与工况两道独立判据，最后看分类概率。<b>p ≥ 0.62 且三道门都过 → 报警并派车</b>；0.40—0.62 或证据不全 → 只报警、人工复核；其余抑制并回写。</p>
+      <div id="advice"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>判定链</b><span>任一硬门不过就降级</span></div>
+      <div id="hits"></div>
+      <div class="dfig-h" style="margin-top:8px"><b>本轮事件</b><span>按时间顺序</span></div>
+      <div id="alarms"></div>
+    </div>
+
+    <div class="dfig dstage" data-stage="4">
+      <div class="dfig-h"><b>05 · 闭环与价值</b><span>120 km 管段 · 示范口径</span></div>
+      <p class="dstage-lede">确认结果回写台账，下一轮重训进入训练集：判对的加固，判错的进错题集。下表是 <b>120 km 管段的示范口径</b>（改造前 → 改造后），不是本页仿真的读数——仿真读数单独列在下面。</p>
+      <table class="dtable valtab">
+        <thead><tr><th>指标</th><th>改造前</th><th>改造后</th></tr></thead>
+        <tbody>
+          <tr><td class="k2">误报</td><td>14 次/月</td><td class="up">2 次/月</td></tr>
+          <tr><td class="k2">检测延迟</td><td>90 s</td><td class="up">25 s</td></tr>
+          <tr><td class="k2">定位误差</td><td>180 m</td><td class="up">45 m</td></tr>
+          <tr><td class="k2">非计划停输</td><td>1 次/年</td><td class="up">避免 1 次</td></tr>
+        </tbody>
+      </table>
+      <div class="dval" style="margin-top:8px">
+        <div><div class="k">本轮报警 / 抑制</div><div class="v" id="l-alarm">—</div><div class="s">仿真读数</div></div>
+        <div><div class="k">本轮误报</div><div class="v" id="l-fp">—</div><div class="s">报警但不在泄漏处</div></div>
+        <div><div class="k">全链路延迟</div><div class="v" id="l-delay">—</div><div class="s">自泄漏起 · 含波前传播</div></div>
+        <div><div class="k">定位误差</div><div class="v" id="l-err">—</div><div class="s">与真值之差</div></div>
+      </div>
+      <p class="mini" style="margin-top:7px;line-height:1.6">口径说明：<b>检测延迟</b> = 压力波到达近端站 → 系统输出报警（8 s 分析窗 + 2 s 持续 + 质心/通信）；含波前传播的全链路延迟由漏点位置决定。<b>误报</b>按每月需人工排除的报警计。四个数字均为示范口径，不是本页仿真结果。</p>
+      <div class="dfeed" id="feedback" style="margin-top:8px">
+        <button class="dbtn" type="button" data-fb="leak">✓ 确认泄漏</button>
+        <button class="dbtn" type="button" data-fb="bad">✗ 标为误报 / 工况</button>
+        <button class="dbtn" type="button" id="btn-retrain">↻ 用回写样本重训</button>
+        <span class="dfeed-note" id="fb-note">回写 0 条 · 人工确认后才进入下一轮训练</span>
       </div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>交叉验证判据</b><span>三项同时满足才判泄漏</span></div>
-      <div id="hits"></div>
+
+    <div class="dmodel">
+      <div class="dmodel-h"><b>模型档案</b><span class="db plain" id="m-badge">已训练</span></div>
+      <div class="dmodel-row"><span class="k">任务</span><span class="v">4 类事件分类 + 三级决策（派车 / 复核 / 抑制）</span></div>
+      <div class="dmodel-row"><span class="k">数据</span><span class="v">1280 例特征级合成事件（物理模型 + 估计误差）· 真实项目换人工确认事件</span></div>
+      <div class="dmodel-row"><span class="k">模型</span><span class="v">softmax 回归 · 16 维（8 特征 + 8 平方项）</span></div>
+      <div class="dmodel-row"><span class="k">验证</span><span class="v" id="m-summary">—</span></div>
+      <div class="dmodel-row"><span class="k">边界</span><span class="v">单端 / 无流量 / 无工况记录时降级为复核，不单独给派车结论</span></div>
     </div>
-    <div class="dfig">
-      <div class="dfig-h"><b>检测日志</b><span id="alarms-hint">按时间顺序</span></div>
-      <div id="alarms"></div>
+
+    <div class="dfig" style="padding-top:8px">
+      <div class="dfig-h"><b>过程日志</b><span>输入 → 处理 → 输出</span></div>
+      <div class="dtrace" id="trace"></div>
     </div>
   </div>
 </div>
