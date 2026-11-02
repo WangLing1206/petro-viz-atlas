@@ -11,7 +11,7 @@
                                 「模块模式」的挂载脚本
        demo/*.png|svg|json… 可选。示范用到的素材，自动转 data URL
 
-   流程：下载模板 → 改内容 → 把整个文件夹拖进弹窗 → 校验 → 添加。
+   流程：下载模板 → 改内容 → 把整个文件夹（或 .zip 压缩包）拖进弹窗 → 校验 → 添加。
    添加后案例存进 localStorage 并注册进 Cases，全站立即可见。
    ========================================================= */
 
@@ -126,6 +126,122 @@
       fr.onerror = function () { reject(new Error('读取失败：' + name)); };
       if (text) fr.readAsText(file, 'utf-8');
       else fr.readAsDataURL(file);
+    });
+  }
+
+  /* ---------------------------------------------------------
+     2.2 zip 压缩包读取
+     ---------------------------------------------------------
+     纯前端解压：解析中央目录，store 直接取字节，deflate 用
+     DecompressionStream('deflate-raw')。支持普通 zip；ZIP64、
+     加密包、分卷包会给出明确提示。
+     --------------------------------------------------------- */
+  function u16(dv, o) { return dv.getUint16(o, true); }
+  function u32(dv, o) { return dv.getUint32(o, true); }
+
+  function zipName(bytes, utf8) {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (e) {
+      try { return new TextDecoder('gbk').decode(bytes); }
+      catch (e2) { return ''; }
+    }
+  }
+
+  function inflateRaw(bytes) {
+    if (typeof global.DecompressionStream !== 'function') {
+      return Promise.reject(new Error('当前浏览器不支持 zip 解压，请解压后拖入文件夹'));
+    }
+    try {
+      var ds = new global.DecompressionStream('deflate-raw');
+      var stream = new Blob([bytes]).stream().pipeThrough(ds);
+      return new Response(stream).arrayBuffer().then(function (ab) {
+        return new Uint8Array(ab);
+      });
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+
+  function readZip(file) {
+    return file.arrayBuffer().then(function (ab) {
+      var buf = new Uint8Array(ab);
+      var dv = new DataView(ab);
+      var eocd = -1;
+      var min = Math.max(0, buf.length - 65557);
+      for (var i = buf.length - 22; i >= min; i--) {
+        if (u32(dv, i) === 0x06054b50) { eocd = i; break; }
+      }
+      if (eocd < 0) throw new Error('不是有效的 zip：找不到中央目录');
+
+      var count = u16(dv, eocd + 10);
+      var cdSize = u32(dv, eocd + 12);
+      var cdOff = u32(dv, eocd + 16);
+      if (cdOff === 0xffffffff || count === 0xffff) throw new Error('暂不支持 ZIP64，请用普通 zip');
+      if (cdOff + cdSize > buf.length) throw new Error('zip 中央目录损坏');
+
+      var list = [];
+      var total = 0;
+      var p = cdOff;
+      for (var n = 0; n < count; n++) {
+        if (u32(dv, p) !== 0x02014b50) throw new Error('zip 中央目录项损坏');
+        var flags = u16(dv, p + 8);
+        var method = u16(dv, p + 10);
+        var csize = u32(dv, p + 20);
+        var usize = u32(dv, p + 24);
+        var nlen = u16(dv, p + 28);
+        var elen = u16(dv, p + 30);
+        var clen = u16(dv, p + 32);
+        var lho = u32(dv, p + 42);
+        var name = zipName(buf.subarray(p + 46, p + 46 + nlen), flags & 0x800)
+          .replace(/\\/g, '/').replace(/^\.\//, '');
+        p += 46 + nlen + elen + clen;
+
+        if (!name || name.charAt(name.length - 1) === '/') continue;
+        if (name.indexOf('__MACOSX/') === 0) continue;
+        if (/(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$/i.test(name)) continue;
+        if (flags & 1) throw new Error('zip 已加密，无法读取');
+        if (method !== 0 && method !== 8) throw new Error('不支持的压缩方式：' + method);
+        if (csize === 0xffffffff || usize === 0xffffffff) throw new Error('暂不支持 ZIP64，请用普通 zip');
+        if (u32(dv, lho) !== 0x04034b50) throw new Error('zip 本地文件头损坏');
+
+        var lnlen = u16(dv, lho + 26);
+        var lelen = u16(dv, lho + 28);
+        var start = lho + 30 + lnlen + lelen;
+        if (start + csize > buf.length) throw new Error('zip 文件数据越界：' + name);
+        list.push({ name: name, method: method, data: buf.subarray(start, start + csize) });
+        total += usize;
+      }
+
+      if (!list.length) throw new Error('zip 里没有可导入的文件');
+      if (total > MAX_TOTAL) throw new Error('解压后约 ' + kb(total) + ' KB，超过 6 MB 上限');
+
+      return Promise.all(list.map(function (e) {
+        var p = e.method === 0 ? Promise.resolve(e.data) : inflateRaw(e.data);
+        return p.then(function (bytes) {
+          if (bytes.length > MAX_TOTAL) throw new Error('单个文件超过 6 MB：' + e.name);
+          var f = new File([bytes], baseOf(e.name), { type: MIME[extOf(e.name)] || '' });
+          try {
+            Object.defineProperty(f, 'webkitRelativePath', { value: e.name, configurable: true });
+          } catch (err) { }
+          return f;
+        });
+      }));
+    });
+  }
+
+  function loadZip(file) {
+    if (S.loading) return;
+    S.loading = true;
+    tip('正在解压「' + file.name + '」…', '');
+    readZip(file).then(function (files) {
+      S.loading = false;
+      loadFiles(files);
+    }).catch(function (e) {
+      S.loading = false;
+      var msg = (e && e.message) || String(e);
+      paintResults([{ level: 'error', msg: 'zip 解压失败', hint: msg }]);
+      tip('zip 解压失败：' + msg, 'is-err');
     });
   }
 
@@ -844,7 +960,7 @@
       '<div class="mdl-b">' +
       '<ol class="imp-flow">' +
       '<li><b>01</b><span>下载模板，改内容与示范</span></li>' +
-      '<li><b>02</b><span>拖入整个案例文件夹</span></li>' +
+      '<li><b>02</b><span>拖入案例文件夹或 zip</span></li>' +
       '<li><b>03</b><span>校验通过后添加</span></li>' +
       '</ol>' +
 
@@ -854,12 +970,14 @@
       '<div class="imp-drop" id="imp-drop">' +
       '<input type="file" id="imp-file" multiple hidden>' +
       '<input type="file" id="imp-dir" webkitdirectory directory multiple hidden>' +
+      '<input type="file" id="imp-zip" accept=".zip,application/zip" hidden>' +
       '<span class="imp-ic">↑</span>' +
-      '<b>拖入案例文件夹，或点击选择</b>' +
-      '<span class="imp-sub">清单 case.json + 示范页 + 脚本 + 素材，上限 6 MB。推荐把整个文件夹<b>直接拖进虚线框</b>；若点按钮弹出的仍是文件选择框（浏览器不支持选文件夹），可点「选择文件」后 Ctrl+A 全选包内文件</span>' +
+      '<b>拖入案例文件夹或 .zip，或点击选择</b>' +
+      '<span class="imp-sub">清单 case.json + 示范页 + 脚本 + 素材，上限 6 MB。支持<b>整个文件夹</b>或<b>.zip 压缩包</b>；zip 会自动解压并去掉顶层文件夹。若点按钮弹出的仍是文件选择框（浏览器不支持选文件夹），可点「选择文件」后 Ctrl+A 全选包内文件</span>' +
       '<span class="imp-choose">' +
       '<button class="btn sm" id="imp-pick-files" type="button">选择文件</button>' +
       '<button class="btn sm ghost" id="imp-pick-dir" type="button">选择文件夹</button>' +
+      '<button class="btn sm ghost" id="imp-pick-zip" type="button">选择 ZIP</button>' +
       '</span>' +
       '</div>' +
 
@@ -1008,6 +1126,14 @@
   function loadFiles(fileList) {
     var files = [].slice.call(fileList || []).filter(function (f) { return f && f.name && f.name !== '.DS_Store'; });
     if (!files.length) return;
+
+    /* 单个 zip：先解压再走原来的多文件校验 */
+    var zips = files.filter(function (f) { return extOf(f.name) === 'zip'; });
+    if (zips.length) {
+      if (files.length > 1) { tip('一次只能导入一个 zip，请单独拖入压缩包', 'is-err'); return; }
+      loadZip(zips[0]);
+      return;
+    }
 
     if (S.loading) return;
     S.loading = true;
@@ -1197,7 +1323,7 @@
       if (e.target.closest('[data-close]')) { close(); }
     });
 
-    var drop = q('#imp-drop'), fileIn = q('#imp-file'), dirIn = q('#imp-dir');
+    var drop = q('#imp-drop'), fileIn = q('#imp-file'), dirIn = q('#imp-dir'), zipIn = q('#imp-zip');
 
     /* 有些环境（国产浏览器兼容模式等）解析 innerHTML 时会丢非标准属性，
        或压根不支持 webkitdirectory —— 弹出的仍是普通文件框。这里补一次属性，
@@ -1270,6 +1396,7 @@
        双保险：① 输入框层面拦截冒泡；② 虚线框只响应真实用户点击。 */
     fileIn.addEventListener('click', function (e) { e.stopPropagation(); });
     dirIn.addEventListener('click', function (e) { e.stopPropagation(); });
+    zipIn.addEventListener('click', function (e) { e.stopPropagation(); });
     drop.addEventListener('click', function (e) {
       if (!e.isTrusted) return;
       if (e.target.closest('.btn')) return;
@@ -1278,9 +1405,11 @@
     });
     q('#imp-pick-files').addEventListener('click', function (e) { e.stopPropagation(); fileIn.click(); });
     q('#imp-pick-dir').addEventListener('click', function (e) { e.stopPropagation(); pickDir(); });
+    q('#imp-pick-zip').addEventListener('click', function (e) { e.stopPropagation(); zipIn.click(); });
 
     fileIn.addEventListener('change', function () { loadFiles(fileIn.files); fileIn.value = ''; });
     dirIn.addEventListener('change', function () { loadFiles(dirIn.files); dirIn.value = ''; });
+    zipIn.addEventListener('change', function () { if (zipIn.files[0]) loadZip(zipIn.files[0]); zipIn.value = ''; });
 
     ['dragenter', 'dragover'].forEach(function (ev) {
       drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('on'); });
@@ -1545,6 +1674,7 @@
     template: templateManifest,
     check: function (pkg, meta) { return checkAll(pkg, meta, S.files); },
     makeZip: makeZip,
+    readZip: readZip,
     templates: { manifest: TPL_README, html: TPL_HTML, css: TPL_CSS, js: TPL_JS }
   };
 
